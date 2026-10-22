@@ -1,0 +1,247 @@
+{
+  "company": [
+    {
+      "id": "COMP-01",
+      "name": "Maju Jaya Enterprise Sdn Bhd"
+    }
+  ],
+  "users": [
+    {
+      "id": "USR-01",
+      "company_id": "COMP-01",
+      "name": "Puan Farah",
+      "email": "farah@majujaya.my",
+      "department": "Management",
+      "reports_to": null,
+      "role": "owner"
+    },
+    {
+      "id": "USR-02",
+      "company_id": "COMP-01",
+      "name": "Encik Razak",
+      "email": "razak@majujaya.my",
+      "department": "Finance",
+      "reports_to": "USR-01",
+      "role": "finance"
+    },
+    {
+      "id": "USR-03",
+      "company_id": "COMP-01",
+      "name": "Cik Aina",
+      "email": "aina@majujaya.my",
+      "department": "Sales & Admin",
+      "reports_to": "USR-02",
+      "role": "preparer"
+    },
+    {
+      "id": "USR-04",
+      "company_id": "COMP-01",
+      "name": "Encik Amir",
+      "email": "amir@majujaya.my",
+      "department": "Operations",
+      "reports_to": "USR-01",
+      "role": "other_staff"
+    }
+  ],
+  "clients": [
+    {
+      "client_id": "CLI-01",
+      "company_id": "COMP-01",
+      "name": "Kedai Kopi Harmoni",
+      "trade": "F&B / Cafe",
+      "contact_name": "Encik Lim",
+      "phone": "+60123456701",
+      "email": "lim@kopiharmoni.my"
+    },
+    {
+      "client_id": "CLI-02",
+      "company_id": "COMP-01",
+      "name": "Seri Maju Trading Sdn Bhd",
+      "trade": "Wholesale & Trading",
+      "contact_name": "Puan Chong",
+      "phone": "+60123456702",
+      "email": "accounts@serimaju.com.my"
+    },
+    {
+      "client_id": "CLI-03",
+      "company_id": "COMP-01",
+      "name": "TechNova Solutions Sdn Bhd",
+      "trade": "IT Services",
+      "contact_name": "Mr Tan",
+      "phone": "+60123456703",
+      "email": "tan@technova.my"
+    },
+    {
+      "client_id": "CLI-04",
+      "company_id": "COMP-01",
+      "name": "BinaJaya Contractors Sdn Bhd",
+      "trade": "Construction & Renovation",
+      "contact_name": "Ir. Zulkifli",
+      "phone": "+60123456704",
+      "email": "finance@binajaya.my"
+    },
+    {
+      "client_id": "CLI-05",
+      "company_id": "COMP-01",
+      "name": "Metro Logistics Hub Sdn Bhd",
+      "trade": "Transport & Logistics",
+      "contact_name": "Mr Rajan",
+      "phone": "+60123456705",
+      "email": "billing@metrologistics.my"
+    },
+    {
+      "client_id": "CLI-06",
+      "company_id": "COMP-01",
+      "name": "Golden Spoon Catering",
+      "trade": "Hospitality & F&B Supply",
+      "contact_name": "Cik Nadia",
+      "phone": "+60123456706",
+      "email": "nadia@goldenspoon.my"
+    },
+    {
+      "client_id": "CLI-07",
+      "company_id": "COMP-01",
+      "name": "Warisan Packaging Enterprise",
+      "trade": "Manufacturing & Packaging",
+      "contact_name": "Haji Roslan",
+      "phone": "+60123456707",
+      "email": "roslan@warisanpack.my"
+    },
+    {
+      "client_id": "CLI-08",
+      "company_id": "COMP-01",
+      "name": "Apex Printworks Sdn Bhd",
+      "trade": "Printing & Signage",
+      "contact_name": "Ms Michelle",
+      "phone": "+60123456708",
+      "email": "michelle@apexprint.my"
+    },
+    {
+      "client_id": "CLI-09",
+      "company_id": "COMP-01",
+      "name": "Selangor Fresh Mart",
+      "trade": "Retail & Mini Market",
+      "contact_name": "Encik Hafiz",
+      "phone": "+60123456709",
+      "email": "hafiz@selangorfresh.my"
+    },
+    {
+      "client_id": "CLI-10",
+      "company_id": "COMP-01",
+      "name": "MegaKemuncak Engineering",
+      "trade": "Industrial Services",
+      "contact_name": "Dato' Kelvin",
+      "phone": "+60123456710",
+      "email": "ap@megakemuncak.com.my"
+    }
+  ],
+  "projects": [
+    {
+      "id": "PRJ-01",
+      "client_id": "CLI-04",
+      "name": "Warehouse Racking & Structural Upgrade",
+      "status": "in_progress",
+      "owner_id": "USR-01",
+      "contract_value": 65000.0,
+      "payment_terms": 30
+    },
+    {
+      "id": "PRJ-02",
+      "client_id": "CLI-02",
+      "name": "Q3 Bulk Wholesale Hardware Supply",
+      "status": "completed",
+      "owner_id": "USR-01",
+      "contract_value": 59500.0,
+      "payment_terms": 30
+    },
+    {
+      "id": "PRJ-03",
+      "client_id": "CLI-05",
+      "name": "Fleet Maintenance & Spare Parts Contract",
+      "status": "in_progress",
+      "owner_id": "USR-01",
+      "contract_value": 25000.0,
+      "payment_terms": 30
+    },
+    {
+      "id": "PRJ-04",
+      "client_id": "CLI-03",
+      "name": "Office Server & Networking Setup",
+      "status": "completed",
+      "owner_id": "USR-01",
+      "contract_value": 12500.0,
+      "payment_terms": 30
+    },
+    {
+      "id": "PRJ-05",
+      "client_id": "CLI-06",
+      "name": "Central Kitchen Cold-Room Servicing",
+      "status": "in_progress",
+      "owner_id": "USR-01",
+      "contract_value": 28000.0,
+      "payment_terms": 30
+    },
+    {
+      "id": "PRJ-06",
+      "client_id": "CLI-10",
+      "name": "Factory Conveyor Fabrication",
+      "status": "completed",
+      "owner_id": "USR-01",
+      "contract_value": 43000.0,
+      "payment_terms": 30
+    }
+  ],
+  "milestones": [
+    {
+      "id": "MLS-01",
+      "project_id": "PRJ-01",
+      "name": "Phase 1 Foundation & Frame Delivery",
+      "amount": 30000.0,
+      "due_offset_days": -52,
+      "completed_offset_days": -52,
+      "invoiced": true
+    },
+    {
+      "id": "MLS-02",
+      "project_id": "PRJ-01",
+      "name": "Phase 2 Racking Installation & Handover",
+      "amount": 15000.0,
+      "due_offset_days": -3,
+      "completed_offset_days": -1,
+      "invoiced": false,
+      "note": "S12 Auto-suggest candidate #1 (completed yesterday, not invoiced yet)"
+    },
+    {
+      "id": "MLS-03",
+      "project_id": "PRJ-05",
+      "name": "Monthly Cold-Chain Delivery Batch #10",
+      "amount": 6500.0,
+      "due_offset_days": -2,
+      "completed_offset_days": 0,
+      "invoiced": false,
+      "note": "S12 Auto-suggest candidate #2 (completed today, not invoiced yet)"
+    }
+  ],
+  "approved_leave": [
+    {
+      "id": "LV-01",
+      "user_id": "USR-02",
+      "user_name": "Encik Razak (Finance)",
+      "backup_approver_id": "USR-01",
+      "from_offset_days": -1,
+      "to_offset_days": 2,
+      "active_in_demo_by_default": false,
+      "note": "S13 Leave routing fixture: when active, routes approvals from USR-02 to USR-01 (Owner)"
+    }
+  ],
+  "public_holidays": [
+    {
+      "offset_days": -12,
+      "name": "Malaysia Public Holiday (Sample Holiday 1)"
+    },
+    {
+      "offset_days": -5,
+      "name": "State Public Holiday (Sample Holiday 2)"
+    }
+  ]
+}

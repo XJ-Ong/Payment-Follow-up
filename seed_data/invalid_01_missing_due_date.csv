@@ -1,0 +1,2 @@
+invoice_no,client_id,project_id,issue_date,due_date,total_amount,deposit_paid
+INV-9001,CLI-02,PRJ-02,2026-09-01,,12000.00,0.00
