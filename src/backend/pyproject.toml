@@ -1,0 +1,28 @@
+[project]
+name = "backend"
+version = "0.1.0"
+description = "Add your description here"
+authors = [
+    { name = "Payment Follow-up Team" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "alembic>=1.13",
+    "tzdata>=2025.2",
+    "httpx>=0.27",
+    "pytest>=8",
+    "fastapi>=0.159.1",
+    "psycopg2-binary>=2.9.13",
+    "pydantic>=2.14.1",
+    "python-dotenv>=1.2.4",
+    "sqlalchemy>=2.1.6",
+    "uvicorn[standard]>=0.54.0",
+]
+
+[build-system]
+requires = ["uv_build>=0.12.23,<0.13.0"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-root = ""
+module-name = "app"

@@ -1,0 +1,23 @@
+services:
+  db:
+    image: postgres:16
+    container_name: followup_db
+    environment:
+      POSTGRES_USER: followup
+      POSTGRES_PASSWORD: followup_dev_password
+      POSTGRES_DB: followup
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  adminer:
+    image: adminer
+    container_name: followup_adminer
+    ports:
+      - "8080:8080"
+    depends_on:
+      - db
+
+volumes:
+  pgdata:
