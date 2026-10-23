@@ -8,7 +8,7 @@ from zoneinfo import ZoneInfo
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import Response
+from fastapi.responses import Response, JSONResponse
 from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import func, select, text
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
@@ -18,6 +18,8 @@ from .db.models import Invoice, PaymentRecord, ClientFollowupProfile, FollowupRu
 from .db.session import SessionLocal
 from .ids import external_uuid
 from .orbyte.mock import MockOrbyteAdapter
+from .followup_schemas import WorkspaceView
+from .services.followups import ConfigurationError, lock_rule, refresh_workspace, read_workspace
 
 app = FastAPI(title="Payment Follow-up")
 app.add_middleware(CORSMiddleware, allow_origins=[origin.strip() for origin in os.getenv("CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173").split(",") if origin.strip()], allow_methods=["GET", "POST"], allow_headers=["Content-Type", "X-Role"])
@@ -82,12 +84,16 @@ def customer(db, client):
     profile = db.get(ClientFollowupProfile, client.id)
     rule = db.scalar(select(FollowupRule).where(FollowupRule.company_id == COMPANY))
     valid = profile is not None and profile.company_id == COMPANY
-    tier = profile.relationship_tier if valid else "New"
+    if rule is None:
+        raise ConfigurationError("Missing company follow-up rules")
+    if not valid:
+        raise ConfigurationError(f"Missing follow-up profile for customer {client.name}")
+    tier = profile.relationship_tier
     return dict(id=str(client.id), name=client.name, contact=client.email or client.phone or "", initials="".join(n[0] for n in client.name.split()[:2]), color="blue", graceDays=(rule.grace_days_by_tier.get(tier, 0) if rule else 0), doNotContact=profile.do_not_contact if valid else False)
 
 def serialize(db, invoice):
     payments = paid(db, invoice)
-    return dict(id=str(invoice.id), invoice_no=invoice.invoice_no, client_id=str(invoice.client_id), issue_date=invoice.issue_date.isoformat(), due_date=invoice.due_date.isoformat(), total_amount=format(invoice.total_amount, ".2f"), payments=format(payments, ".2f"), outstanding_amount=format(invoice.total_amount-payments, ".2f"), status=invoice.status)
+    return dict(id=str(invoice.id), invoice_no=invoice.invoice_no, client_id=str(invoice.client_id), issue_date=invoice.issue_date.isoformat(), due_date=invoice.due_date.isoformat(), total_amount=format(invoice.total_amount, ".2f"), payments=format(payments, ".2f"), outstanding_amount=format(max(Decimal("0.00"), invoice.total_amount-payments), ".2f"), status=invoice.status)
 
 def audit(db, role, action, invoice):
     db.add(ActivityLog(id=uuid4(), company_id=COMPANY, actor_type="user", actor_id=external_uuid("USR-01" if role == "Owner" else "USR-02"), action=action, entity_type="invoice", entity_id=invoice.id, after_state=serialize(db, invoice)))
@@ -120,6 +126,7 @@ def create_invoice(data: InvoiceInput, db: DB, role: Role):
         raise HTTPException(422, "Unknown customer") from None
     if client.company_id != COMPANY:
         raise HTTPException(422, "Unknown customer")
+    lock_rule(db, COMPANY)
     invoice = Invoice(id=uuid4(), company_id=COMPANY, client_id=data.client_id, invoice_no=data.invoice_no, issue_date=data.issue_date, due_date=data.due_date, total_amount=data.total_amount, source="manual", status="open")
     db.add(invoice)
     try:
@@ -130,6 +137,7 @@ def create_invoice(data: InvoiceInput, db: DB, role: Role):
     if data.initial_payment:
         add_payment(db, invoice, PaymentInput(amount=data.initial_payment, received_date=data.issue_date, payment_type="deposit"), role)
     audit(db, role, "invoice.created", invoice)
+    refresh_workspace(db, COMPANY, adapter, external_uuid("USR-01" if role == "Owner" else "USR-02"))
     commit(db)
     return serialize(db, invoice)
 
@@ -146,9 +154,28 @@ def add_payment(db, invoice, data, role):
 
 @app.post("/api/invoices/{invoice_id}/payments", status_code=201)
 def record_payment(invoice_id: UUID, data: PaymentInput, db: DB, role: Role):
+    lock_rule(db, COMPANY)
     invoice = db.scalar(select(Invoice).where(Invoice.id == invoice_id, Invoice.company_id == COMPANY).with_for_update())
     if invoice is None:
         raise HTTPException(404, "Invoice not found")
     add_payment(db, invoice, data, role)
+    refresh_workspace(db, COMPANY, adapter, external_uuid("USR-01" if role == "Owner" else "USR-02"))
     commit(db)
     return serialize(db, invoice)
+
+
+@app.exception_handler(ConfigurationError)
+async def configuration_error(request: Request, error: ConfigurationError):
+    return JSONResponse(status_code=409, content={"detail": str(error)})
+
+
+@app.get("/api/followups", response_model=WorkspaceView)
+def followups(db: DB, role: Role):
+    return read_workspace(db, COMPANY)
+
+
+@app.post("/api/followups/refresh", response_model=WorkspaceView)
+def refresh_followups(db: DB, role: Role):
+    result = refresh_workspace(db, COMPANY, adapter, external_uuid("USR-01" if role == "Owner" else "USR-02"))
+    commit(db)
+    return result

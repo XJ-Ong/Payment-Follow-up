@@ -1,3 +1,4 @@
+import { demoMode } from '../api';
 import { CircleAlert, Loader2, SlidersHorizontal } from 'lucide-react';
 import { type Invoice, type Filters, type GraceOverrides } from '../model';
 import { type Page } from '../navigation';
@@ -49,7 +50,13 @@ export default function InvoicesPage({
             <h2>
               {view === 'Simulated Outbox'
                 ? 'Simulated Outbox'
-                : 'Invoices Needing Follow-up'}
+                : !demoMode && view === 'Dashboard'
+                  ? 'Overdue Invoice Rankings'
+                  : !demoMode && view.includes('Queue')
+                    ? 'Ready for Follow-up'
+                    : !demoMode
+                      ? 'Invoices & Payments'
+                      : 'Invoices Needing Follow-up'}
             </h2>
             <span className="count-pill">{visible.length} invoices</span>
           </div>
@@ -62,9 +69,13 @@ export default function InvoicesPage({
           <div className="empty">
             <CircleAlert size={30} className="error-icon" />
             <h3>We couldn’t refresh your invoices</h3>
-            <p>This is a simulated connection error. Your demo records are safe.</p>
+            <p>
+              {demoMode
+                ? 'This is a simulated connection error. Your demo records are safe.'
+                : 'Could not load current follow-up results. Your last successful saved results are retained. Check that the API is running, then retry.'}
+            </p>
             <button className="button" onClick={onRetry}>
-              Retry demo connection
+              {demoMode ? 'Retry demo connection' : 'Retry connection'}
             </button>
           </div>
         ) : loading ? (

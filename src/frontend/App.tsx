@@ -1,6 +1,14 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { toast } from 'sonner';
-import { demoMode, loadWorkspace, createInvoice, recordPayment } from './api';
+import {
+  demoMode,
+  loadWorkspace,
+  createInvoice,
+  recordPayment,
+  type Dashboard,
+  type FollowupAlert,
+  type SavedRules,
+} from './api';
 import {
   REFERENCE_DATE,
   customers as demoCustomers,
@@ -35,6 +43,11 @@ import WeeklySummaryPage from './pages/WeeklySummaryPage';
 export default function App() {
   const [invoices, setInvoices] = useState<Invoice[]>(demoMode ? initialInvoices : []);
   const [customers, setCustomers] = useState<Customer[]>(demoMode ? demoCustomers : []);
+  const [dashboard, setDashboard] = useState<Dashboard | null>(null);
+  const [alerts, setAlerts] = useState<FollowupAlert[]>([]);
+  const [rules, setRules] = useState<SavedRules | null>(null);
+  const [asOf, setAsOf] = useState<string | undefined>();
+  const requestGeneration = useRef(0);
   const [active, setActive] = useState<Page>('Dashboard');
   const [role, setRole] = useState<Role>('Owner');
   const [filters, setFilters] = useState<Filters>(cleanFilters);
@@ -48,13 +61,42 @@ export default function App() {
   const [graceOverrides, setGraceOverrides] = useState<GraceOverrides>({});
   const [refreshLabel, setRefreshLabel] = useState('All changes up to date');
 
-  const totals = getInvoiceTotals(invoices);
-  const balances = getCustomerBalances(invoices, customers);
+  function applyWorkspace(data: Awaited<ReturnType<typeof loadWorkspace>>) {
+    setCustomers(data.customers);
+    setInvoices(data.invoices);
+    setDashboard(data.dashboard);
+    setAlerts(data.alerts);
+    setRules(data.rules);
+    setAsOf(data.asOf);
+    setRefreshLabel(
+      data.computedAt
+        ? `Calculated ${new Date(data.computedAt).toLocaleTimeString('en-GB', { timeZone: 'Asia/Kuala_Lumpur' })}`
+        : 'Refresh to calculate priorities',
+    );
+  }
+  const totals = !demoMode
+    ? {
+        overdue: Number(dashboard?.total_overdue ?? '0'),
+        ready: dashboard?.queue_count ?? 0,
+        alerts: dashboard?.alert_count ?? 0,
+        review: 0,
+        drafts: 0,
+        sent: 0,
+        snoozed: 0,
+      }
+    : getInvoiceTotals(invoices);
+  const balances =
+    !demoMode && dashboard
+      ? dashboard.customer_balances.map((c) => ({
+          name: c.name,
+          balance: Number(c.balance),
+        }))
+      : getCustomerBalances(invoices, customers);
   const visible = getVisibleInvoices(
     invoices,
     applied,
     graceOverrides,
-    getInvoiceScope(active),
+    getInvoiceScope(active, !demoMode),
   );
   const current = invoices.find((invoice) => invoice.id === selected);
 
@@ -69,6 +111,7 @@ export default function App() {
   }
 
   function changeRole(nextRole: Role) {
+    requestGeneration.current += 1;
     setRole(nextRole);
     setSelected(null);
     setAdding(false);
@@ -139,6 +182,7 @@ export default function App() {
     const notification = toast.loading('Refreshing invoices…', {
       id: 'workspace-refresh',
     });
+    const generation = ++requestGeneration.current;
     setLoading(true);
     setError(false);
     try {
@@ -147,12 +191,13 @@ export default function App() {
         throw new Error('Simulated connection failure');
       if (!demoMode) {
         const data = await loadWorkspace(role);
-        setCustomers(data.customers);
-        setInvoices(data.invoices);
+        if (generation !== requestGeneration.current) return;
+        applyWorkspace(data);
       }
-      setRefreshLabel('Refreshed just now');
+      if (demoMode) setRefreshLabel('Refreshed just now');
       toast.success('Invoices refreshed.', { id: notification });
     } catch (err) {
+      if (generation !== requestGeneration.current) return;
       setError(true);
       toast.error(err instanceof Error ? err.message : 'Unable to load invoices', {
         id: notification,
@@ -160,27 +205,33 @@ export default function App() {
         action: { label: 'Retry', onClick: retryConnection },
       });
     } finally {
-      setLoading(false);
+      if (generation === requestGeneration.current) setLoading(false);
     }
   }
 
   useEffect(() => {
     if (demoMode) return;
     let cancelled = false;
+    const generation = ++requestGeneration.current;
     setInvoices([]);
     setCustomers([]);
-    if (role === 'Other Staff') return;
+    setDashboard(null);
+    setAlerts([]);
+    setRules(null);
+    if (role === 'Other Staff') {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     setError(false);
     loadWorkspace(role)
       .then((data) => {
-        if (!cancelled) {
-          setInvoices(data.invoices);
-          setCustomers(data.customers);
+        if (!cancelled && generation === requestGeneration.current) {
+          applyWorkspace(data);
         }
       })
       .catch((err) => {
-        if (!cancelled) {
+        if (!cancelled && generation === requestGeneration.current) {
           setError(true);
           toast.error(err instanceof Error ? err.message : 'Unable to load invoices', {
             duration: 8000,
@@ -189,7 +240,7 @@ export default function App() {
         }
       })
       .finally(() => {
-        if (!cancelled) setLoading(false);
+        if (!cancelled && generation === requestGeneration.current) setLoading(false);
       });
     return () => {
       cancelled = true;
@@ -214,6 +265,8 @@ export default function App() {
         return (
           <SettingsPage
             customers={customers}
+            savedRules={rules}
+            readOnly={!demoMode}
             graceOverrides={graceOverrides}
             failRefresh={failRefresh}
             onGraceChange={changeGraceDays}
@@ -255,11 +308,16 @@ export default function App() {
 
   return (
     <AppLayout
+      asOf={asOf}
       active={active}
       role={role}
       totals={totals}
       balances={balances}
-      totalOutstanding={getTotalOutstanding(invoices)}
+      totalOutstanding={
+        !demoMode && dashboard
+          ? Number(dashboard.total_outstanding)
+          : getTotalOutstanding(invoices)
+      }
       loading={loading}
       refreshLabel={refreshLabel}
       onNavigate={navigate}
@@ -293,6 +351,34 @@ export default function App() {
         </>
       }
     >
+      {!demoMode && active === 'Dashboard' && !loading && !error && (
+        <section className="card" aria-label="Follow-up alerts">
+          <div className="section-title">
+            <h2>Follow-up alerts</h2>
+            <span>{dashboard?.alert_count ?? 0} active alerts</span>
+          </div>
+          {alerts
+            .filter((a) => a.status === 'new' || a.status === 'seen')
+            .map((alert) => {
+              const invoice = invoices.find((i) => i.databaseId === alert.invoice_id);
+              return (
+                <div className="rule-row" key={alert.id}>
+                  <div>
+                    <strong>{invoice?.id}</strong>
+                    <p>{alert.reason}</p>
+                  </div>
+                  <button
+                    className="button"
+                    onClick={() => invoice && setSelected(invoice.id)}
+                  >
+                    View calculation
+                  </button>
+                </div>
+              );
+            })}
+          {!dashboard?.alert_count && <p>No active follow-up alerts.</p>}
+        </section>
+      )}
       {renderPage()}
     </AppLayout>
   );

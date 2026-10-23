@@ -13,3 +13,4 @@ node_modules/
 src/backend/static/
 .DS_Store
 mem/
+artifacts/

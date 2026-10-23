@@ -34,7 +34,9 @@ export const navigation: NavigationItem[] = [
   { label: 'Simulated Outbox', icon: Send },
 ];
 
-export function getInvoiceScope(page: Page): InvoiceScope {
+export function getInvoiceScope(page: Page, databaseMode = false): InvoiceScope {
+  if (databaseMode && page === 'Dashboard') return 'ranked';
+  if (databaseMode && page.includes('Queue')) return 'queue';
   if (page === 'Today’s Queue') return 'review';
   if (page === 'Simulated Outbox') return 'sent';
   return 'all';

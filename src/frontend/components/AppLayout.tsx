@@ -11,6 +11,7 @@ import PaymentSummary from './PaymentSummary';
 import PermissionDenied from './PermissionDenied';
 
 export default function AppLayout({
+  asOf,
   active,
   role,
   totals,
@@ -26,6 +27,7 @@ export default function AppLayout({
   children,
   overlays,
 }: {
+  asOf?: string;
   active: Page;
   role: Role;
   totals: InvoiceTotals;
@@ -52,7 +54,7 @@ export default function AppLayout({
         role={role}
         collapsed={collapsed}
         mobile={mobile}
-        reviewCount={totals.review}
+        reviewCount={totals.ready ?? totals.review}
         setCollapsed={setCollapsed}
         setMobile={setMobile}
         onNavigate={(page) => {
@@ -64,8 +66,9 @@ export default function AppLayout({
       />
       <div className="main-shell">
         <Header
+          followupMode={totals.ready !== undefined}
           active={active}
-          reviewCount={totals.review}
+          reviewCount={totals.alerts ?? totals.review}
           onOpenNavigation={() => {
             setCollapsed(false);
             setMobile(true);
@@ -87,9 +90,10 @@ export default function AppLayout({
               <strong>
                 {import.meta.env.VITE_DATA_MODE === 'demo'
                   ? '22 Oct 2026'
-                  : new Date().toLocaleDateString('en-GB', {
+                  : (asOf ??
+                    new Date().toLocaleDateString('en-GB', {
                       timeZone: 'Asia/Kuala_Lumpur',
-                    })}
+                    }))}
               </strong>
             </span>
             <span>
@@ -101,7 +105,7 @@ export default function AppLayout({
             <PermissionDenied />
           ) : (
             <>
-              <ContextBanner reviewCount={totals.review} />
+              <ContextBanner reviewCount={totals.alerts ?? totals.review} />
               <PaymentSummary totals={totals} />
               {children}
               <CustomerBalanceChart data={balances} total={totalOutstanding} />

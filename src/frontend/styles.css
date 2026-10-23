@@ -2157,6 +2157,80 @@ dd {
     visibility: visible;
   }
 }
+/* Keep operational text readable at every viewport size. */
+th {
+  font-size: 12px;
+  font-weight: 600;
+  color: #596b85;
+  height: 44px;
+}
+td,
+.invoice-link,
+.customer-cell strong,
+.priority-value {
+  font-size: 14px;
+  line-height: 1.5;
+}
+td {
+  color: #596b85;
+}
+td small,
+.customer-cell small,
+.customer-cell .avatar,
+.date-cell,
+.overdue-high,
+.overdue-normal,
+.priority-level,
+.badge,
+.review-button,
+.sort-label,
+.count-pill,
+.table-footer,
+.table-footer-note,
+.pagination > span {
+  font-size: 12px;
+  line-height: 1.5;
+}
+td small,
+.customer-cell small,
+.date-cell,
+.priority-level,
+.sort-label {
+  color: #687b94;
+}
+.review-button {
+  min-height: 32px;
+  padding: 6px 10px;
+}
+.pagination button,
+.pagination > span {
+  width: 30px;
+  height: 30px;
+}
+.button,
+.nav-item,
+label,
+.date-range legend,
+.input-icon input,
+.filters select,
+.date-range input,
+.menu-search input,
+.role-switch select,
+.detail-section textarea {
+  font-size: 13px;
+}
+.section-title p,
+.page-header p,
+.context-banner p,
+.summary-top > span:first-child,
+.summary-card > p,
+.date-line,
+.dialog-header p,
+.text-caption,
+.muted {
+  font-size: 12px;
+  line-height: 1.5;
+}
 /* Shared feedback for controls across pages, dialogs, and drawers. */
 button,
 input,

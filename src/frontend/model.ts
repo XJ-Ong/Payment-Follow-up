@@ -20,7 +20,22 @@ export type Customer = {
   graceDays: number;
   doNotContact: boolean;
 };
+export type FollowupCalculation = {
+  outstanding_amount: string;
+  days_overdue: number;
+  grace_days: number;
+  effective_days: number;
+  score: string;
+  rank: number | null;
+  trigger_type: 'threshold' | 'safety_rule' | 'both' | null;
+  eligible: boolean;
+  exclusion_reasons: string[];
+  holidays_excluded: string[];
+  last_sent_date: string | null;
+  reason: string;
+};
 export type Invoice = {
+  calculation?: FollowupCalculation;
   databaseId?: string;
   customer?: Customer;
   asOf?: string;
@@ -44,8 +59,10 @@ export type Filters = {
 };
 
 export type GraceOverrides = Record<string, number>;
-export type InvoiceScope = 'all' | 'review' | 'sent';
+export type InvoiceScope = 'all' | 'review' | 'sent' | 'queue' | 'ranked';
 export type InvoiceTotals = {
+  ready?: number;
+  alerts?: number;
   overdue: number;
   review: number;
   drafts: number;
@@ -182,14 +199,20 @@ export const initialInvoices: Invoice[] = [
   },
 ];
 export const outstanding = (i: Invoice) =>
-  Math.max(0, Math.round((i.total - i.payments) * 100) / 100);
+  i.calculation
+    ? Number(i.calculation.outstanding_amount)
+    : Math.max(0, Math.round((i.total - i.payments) * 100) / 100);
 export const daysOverdue = (i: Invoice) =>
-  Math.max(
-    0,
-    Math.floor((Date.parse(i.asOf ?? REFERENCE_DATE) - Date.parse(i.due)) / 86400000),
-  );
+  i.calculation
+    ? i.calculation.days_overdue
+    : Math.max(
+        0,
+        Math.floor((Date.parse(i.asOf ?? REFERENCE_DATE) - Date.parse(i.due)) / 86400000),
+      );
 export const priority = (i: Invoice, grace: number) =>
-  outstanding(i) * Math.max(0, daysOverdue(i) - grace);
+  i.calculation
+    ? Number(i.calculation.score)
+    : outstanding(i) * Math.max(0, daysOverdue(i) - grace);
 export const money = (n: number) =>
   'MYR ' +
   n.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -228,6 +251,7 @@ export function getInvoiceCustomer(invoice: Invoice): Customer {
 }
 
 export function getGraceDays(invoice: Invoice, overrides: GraceOverrides): number {
+  if (invoice.calculation) return invoice.calculation.grace_days;
   return overrides[invoice.customerId] ?? getInvoiceCustomer(invoice).graceDays;
 }
 
@@ -259,17 +283,32 @@ export function getVisibleInvoices(
 
       return (
         matchesSearch &&
-        (filters.status === 'All statuses' || invoice.status === filters.status) &&
+        (filters.status === 'All statuses' ||
+          invoice.status === filters.status ||
+          (invoice.calculation &&
+            (invoice.financialStatus === filters.status ||
+              (filters.status === 'Ready for follow-up' &&
+                invoice.calculation.eligible) ||
+              (filters.status === 'Not eligible' && !invoice.calculation.eligible)))) &&
         (!filters.from || invoice.due >= filters.from) &&
         (!filters.to || invoice.due <= filters.to) &&
+        (scope !== 'queue' || invoice.calculation?.eligible === true) &&
+        (scope !== 'ranked' || invoice.calculation?.rank != null) &&
         (scope !== 'review' || invoice.status === 'Needs review') &&
         (scope !== 'sent' || invoice.status === 'Simulated sent')
       );
     })
-    .sort(
-      (a, b) =>
-        priority(b, getGraceDays(b, overrides)) - priority(a, getGraceDays(a, overrides)),
-    );
+    .sort((a, b) => {
+      if (a.calculation && b.calculation) {
+        return (
+          (a.calculation.rank ?? Number.MAX_SAFE_INTEGER) -
+            (b.calculation.rank ?? Number.MAX_SAFE_INTEGER) || a.id.localeCompare(b.id)
+        );
+      }
+      return (
+        priority(b, getGraceDays(b, overrides)) - priority(a, getGraceDays(a, overrides))
+      );
+    });
 }
 
 export function getCustomerBalances(

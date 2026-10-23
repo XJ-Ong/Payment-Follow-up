@@ -64,7 +64,7 @@ class FollowupRule(Base):
     safety_flag_days: Mapped[int] = mapped_column(Integer)
     min_spacing_days: Mapped[int] = mapped_column(Integer)
     second_approval_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2))
-    skip_holidays: Mapped[bool] = mapped_column(Boolean, server_default=text("true"))
+    skip_holidays: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
     primary_approver_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True))  # Orbyte ref
     backup_approver_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True))  # Orbyte ref
 
@@ -163,9 +163,12 @@ class PrioritySnapshot(Base):
     days_overdue: Mapped[int] = mapped_column(Integer)
     grace_days: Mapped[int] = mapped_column(Integer)
     effective_days: Mapped[int] = mapped_column(Integer)
-    score: Mapped[Decimal] = mapped_column(Numeric(14, 2))  # RM-days, larger than money
-    rank: Mapped[int] = mapped_column(Integer)
-    reason: Mapped[str] = mapped_column(String(255))
+    score: Mapped[Decimal] = mapped_column(Numeric(24, 2))  # RM-days, larger than money
+    rank: Mapped[int | None] = mapped_column(Integer)
+    eligible: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    exclusion_reasons: Mapped[list] = mapped_column(JSONB, server_default=text("'[]'::jsonb"))
+    calculation: Mapped[dict] = mapped_column(JSONB, server_default=text("'{}'::jsonb"))
+    reason: Mapped[str] = mapped_column(Text)
     rule_snapshot: Mapped[dict] = mapped_column(JSONB)  # copy of rule settings used
 
 
@@ -173,6 +176,7 @@ class PrioritySnapshot(Base):
 class Alert(Base):
     __tablename__ = "alert"
     __table_args__ = (
+        UniqueConstraint("snapshot_id", "recipient_id", "channel", name="uq_alert_snapshot_recipient_channel"),
         CheckConstraint("trigger_type IN ('threshold', 'safety_rule', 'both')", name="ck_alert_trigger_type"),
         CheckConstraint("channel IN ('dashboard', 'email', 'whatsapp')", name="ck_alert_channel"),
         CheckConstraint("status IN ('new', 'seen', 'actioned', 'dismissed')", name="ck_alert_status"),

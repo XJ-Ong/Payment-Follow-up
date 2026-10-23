@@ -109,7 +109,15 @@ export default function ReviewDrawer({
         )}
 
         <div className="drawer-status">
-          <StatusBadge status={i.status} />
+          <StatusBadge
+            status={
+              i.calculation
+                ? i.calculation.eligible
+                  ? 'Ready for follow-up'
+                  : 'Not eligible'
+                : i.status
+            }
+          />
           <span className="prototype-pill">Simulated delivery</span>
         </div>
         <section className="detail-section">
@@ -155,6 +163,26 @@ export default function ReviewDrawer({
           <strong>
             {priority(i, graceDays).toLocaleString('en-MY')} <small>priority score</small>
           </strong>
+          {i.calculation && (
+            <div>
+              <p>{i.calculation.reason}</p>
+              <p>
+                {i.calculation.eligible
+                  ? 'Ready for follow-up'
+                  : 'Not eligible for Today\u2019s Queue'}
+              </p>
+              {i.calculation.exclusion_reasons.map((reason) => (
+                <p key={reason}>{reason}</p>
+              ))}
+              <p>
+                Public holidays excluded:{' '}
+                {i.calculation.holidays_excluded.join(', ') || 'None'}. Weekends count.
+              </p>
+              {i.calculation.last_sent_date && (
+                <p>Last simulated send: {i.calculation.last_sent_date}</p>
+              )}
+            </div>
+          )}
         </section>
         {blocked ? (
           <div className="blocked-note">
@@ -182,7 +210,7 @@ export default function ReviewDrawer({
               <textarea
                 aria-label="Reminder text"
                 value={text}
-                readOnly={!editable}
+                readOnly={databaseMode || !editable}
                 onChange={(e) => setText(e.target.value)}
                 rows={11}
               />
@@ -190,48 +218,52 @@ export default function ReviewDrawer({
                 Template-generated text · No AI or messaging service connected
               </p>
             </section>
-            <section className="approval-progress">
-              <h3>Approval progress</h3>
-              <div className="progress-step">
-                <span
-                  className={
-                    i.status !== 'Not started' && i.status !== 'Snoozed' ? 'complete' : ''
-                  }
-                >
-                  <Check size={13} />
-                </span>
-                <div>
-                  <strong>Prepare reminder</strong>
-                  <small>
-                    {i.preparedBy
-                      ? `Prepared by ${i.preparedBy}`
-                      : 'Create a template draft'}
-                  </small>
+            {!databaseMode && (
+              <section className="approval-progress">
+                <h3>Approval progress</h3>
+                <div className="progress-step">
+                  <span
+                    className={
+                      i.status !== 'Not started' && i.status !== 'Snoozed'
+                        ? 'complete'
+                        : ''
+                    }
+                  >
+                    <Check size={13} />
+                  </span>
+                  <div>
+                    <strong>Prepare reminder</strong>
+                    <small>
+                      {i.preparedBy
+                        ? `Prepared by ${i.preparedBy}`
+                        : 'Create a template draft'}
+                    </small>
+                  </div>
                 </div>
-              </div>
-              <div className="progress-step">
-                <span className={i.status === 'Simulated sent' ? 'complete' : ''}>
-                  {i.status === 'Simulated sent' ? <Check size={13} /> : '2'}
-                </span>
-                <div>
-                  <strong>Human approval</strong>
-                  <small>Owner or Finance approval required</small>
+                <div className="progress-step">
+                  <span className={i.status === 'Simulated sent' ? 'complete' : ''}>
+                    {i.status === 'Simulated sent' ? <Check size={13} /> : '2'}
+                  </span>
+                  <div>
+                    <strong>Human approval</strong>
+                    <small>Owner or Finance approval required</small>
+                  </div>
                 </div>
-              </div>
-              <div className="progress-step">
-                <span className={i.status === 'Simulated sent' ? 'complete' : ''}>
-                  {i.status === 'Simulated sent' ? <Check size={13} /> : '3'}
-                </span>
-                <div>
-                  <strong>Simulated delivery</strong>
-                  <small>
-                    {i.sentOn
-                      ? `Recorded ${dateLabel(i.sentOn)} · no real message sent`
-                      : 'Added to the demo outbox after approval'}
-                  </small>
+                <div className="progress-step">
+                  <span className={i.status === 'Simulated sent' ? 'complete' : ''}>
+                    {i.status === 'Simulated sent' ? <Check size={13} /> : '3'}
+                  </span>
+                  <div>
+                    <strong>Simulated delivery</strong>
+                    <small>
+                      {i.sentOn
+                        ? `Recorded ${dateLabel(i.sentOn)} · no real message sent`
+                        : 'Added to the demo outbox after approval'}
+                    </small>
+                  </div>
                 </div>
-              </div>
-            </section>
+              </section>
+            )}
           </>
         )}
       </div>

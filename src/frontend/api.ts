@@ -1,4 +1,4 @@
-import type { Customer, Invoice, Role } from './model';
+import type { Customer, Invoice, Role, FollowupCalculation } from './model';
 
 export const demoMode = import.meta.env.VITE_DATA_MODE === 'demo';
 const baseUrl = (import.meta.env.VITE_API_URL ?? 'http://localhost:8000').replace(
@@ -24,25 +24,57 @@ export async function request<T>(path: string, role: Role, body?: unknown): Prom
   }
   return response.json();
 }
+export type SavedRules = {
+  grace_days_by_tier: Record<string, number>;
+  alert_threshold: string;
+  safety_flag_days: number;
+  min_spacing_days: number;
+  skip_holidays: boolean;
+  primary_approver_id: string;
+};
+export type FollowupAlert = {
+  id: string;
+  invoice_id: string;
+  recipient_id: string;
+  trigger_type: string;
+  status: string;
+  reason: string;
+};
+export type Dashboard = {
+  total_outstanding: string;
+  total_overdue: string;
+  queue_count: number;
+  alert_count: number;
+  customer_balances: { customer_id: string; name: string; balance: string }[];
+  ranking_ids: string[];
+};
 type ApiInvoice = {
   id: string;
   invoice_no: string;
   client_id: string;
-  issue_date: string;
   due_date: string;
   total_amount: string;
   payments: string;
-  outstanding_amount: string;
   status: string;
+  calculation: FollowupCalculation;
 };
-export async function loadWorkspace(role: Role) {
+export async function loadWorkspace(role: Role, refresh = true) {
   const data = await request<{
     invoices: ApiInvoice[];
     customers: Customer[];
     as_of_date: string;
-  }>('/invoices', role);
+    computed_at: string | null;
+    rules: SavedRules | null;
+    dashboard: Dashboard;
+    alerts: FollowupAlert[];
+  }>(refresh ? '/followups/refresh' : '/followups', role, refresh ? {} : undefined);
   return {
     customers: data.customers,
+    dashboard: data.dashboard,
+    alerts: data.alerts,
+    rules: data.rules,
+    asOf: data.as_of_date,
+    computedAt: data.computed_at,
     invoices: data.invoices.map(
       (row): Invoice => ({
         id: row.invoice_no,
@@ -55,6 +87,7 @@ export async function loadWorkspace(role: Role) {
         status: 'Not started',
         asOf: data.as_of_date,
         financialStatus: row.status,
+        calculation: row.calculation,
       }),
     ),
   };

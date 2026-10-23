@@ -155,7 +155,7 @@ npm install
 npm run dev
 ```
 
-Set `VITE_API_URL=http://localhost:8000` and `VITE_DATA_MODE=api`. Restart Vite after changing environment variables. Backend `CORS_ORIGINS` is a comma-separated list of allowed local frontend origins. For a standalone template preview use `VITE_DATA_MODE=demo`; those template edits are not persisted. API mode saves invoices/payments and uses the current Malaysia date. Rules and reminder screens still contain prototype behavior; durable reminder workflow, dual approvals and dispatch remain future integration work.
+Set `VITE_API_URL=http://localhost:8000` and `VITE_DATA_MODE=api`. Restart Vite after changing environment variables. Backend `CORS_ORIGINS` is a comma-separated list of allowed local frontend origins. For a standalone template preview use `VITE_DATA_MODE=demo`; those template edits are not persisted. API mode saves invoices/payments and uses the current Malaysia date. Saved follow-up rules are read-only in API mode. Scoring, dashboard alerts and queue eligibility are calculated and saved by the backend; durable reminder workflow, dual approvals and dispatch remain future integration work.
 
 ### Production security headers
 
@@ -232,7 +232,7 @@ npm install
 npm run dev
 ```
 
-Set `VITE_API_URL=http://localhost:8000` and `VITE_DATA_MODE=api`. Restart Vite after changing environment variables. Backend `CORS_ORIGINS` is a comma-separated list of allowed local frontend origins. For a standalone template preview use `VITE_DATA_MODE=demo`; those template edits are not persisted. API mode saves invoices/payments and uses the current Malaysia date. Rules and reminder screens still contain prototype behavior; durable reminder workflow, dual approvals and dispatch remain future integration work.
+Set `VITE_API_URL=http://localhost:8000` and `VITE_DATA_MODE=api`. Restart Vite after changing environment variables. Backend `CORS_ORIGINS` is a comma-separated list of allowed local frontend origins. For a standalone template preview use `VITE_DATA_MODE=demo`; those template edits are not persisted. API mode saves invoices/payments and uses the current Malaysia date. Saved follow-up rules are read-only in API mode. Scoring, dashboard alerts and queue eligibility are calculated and saved by the backend; durable reminder workflow, dual approvals and dispatch remain future integration work.
 
 ### API contract
 
@@ -280,8 +280,8 @@ Module Progress
 ✅ Payment recording
 ✅ Outstanding balance calculation
 ✅ Simulated roles - Preparer removed
-🟡 Dashboard
-🟡 Priority scoring & daily queue
+✅ Dashboard
+✅ Priority scoring & daily queue
 🟡 Customer profiles
 🟡 Rules & settings
 🟡 Reminder drafts
@@ -294,6 +294,54 @@ Module Progress
 ❌ Milestone invoice suggestions
 ❌ Backup approval during leave
 ❌ Two-person high-value approval
-❌ Holiday-aware overdue calculation
+✅ Holiday-aware overdue calculation
 ❌ AI drafting, explanations & summaries
 ❌ Scheduled automation
+
+## Scoring, alerts and daily queue milestone
+
+Apply `uv run alembic upgrade head` in `src/backend` before starting the API. Revision `0002` adds saved eligibility/calculation fields, makes rank optional for unranked invoices, widens score capacity and prevents duplicate alerts for the same snapshot, recipient and channel. Existing invoice/payment records are preserved. Conflicting duplicate legacy alerts cause migration to stop for review, rather than deleting history.
+
+### Policy
+
+- Reference dates use `Asia/Kuala_Lumpur`; timestamps are timezone-aware.
+- Outstanding = max(0, invoice total - recorded payments).
+- Overdue days = days after the due date through the reference date. Optional holiday mode excludes distinct adapter-supplied public holidays in this interval. Weekends still count. Holiday mode defaults to off.
+- Effective days = max(0, overdue days - tier grace). Score = outstanding x effective days, in RM-days.
+- Threshold alert: score **at least** the configured threshold. Safety alert: overdue days **at least** the configured safety age. Both triggers can apply; the safety rule can trigger even while inside a longer grace period.
+- Queue = alert-triggered invoices that are overdue, have a positive balance, are not paid/void, allow contact, and meet reminder spacing. Spacing is **per invoice**, using its latest simulated send date in Malaysia time. Exactly the configured spacing passes.
+- Rankings include unpaid overdue invoices even when contact or spacing blocks the queue. Order: score descending, overdue days descending, invoice number ascending, UUID ascending. Paid, future and void invoices remain accessible under Invoices & Payments but have no active rank.
+- Dashboard totals exclude void invoices and include do-not-contact balances. The backend returns customer balances, scores, ranks, eligibility and explanations; frontend local rule previews cannot override API-mode calculations.
+- Missing company rules, incomplete grace configuration, missing customer profiles or an invalid primary approver return a configuration error (409). These errors roll back invoice/payment writes too.
+
+Default seed rules: New/Regular/Key grace 0/7/14 days, threshold 50,000 RM-days, safety age 30 days, spacing five days. These are configurable demo assumptions, not researched business rules. Rules are read-only in the API UI for this milestone.
+
+### Worked examples
+
+| Invoice scenario | Calculation | Result |
+|---|---|---|
+| MYR 2,500 outstanding, 40 days overdue, New tier | 2,500 x (40 - 0) = 100,000 | Both rules; queue if contact/spacing permit |
+| MYR 500 outstanding, 40 days overdue, New tier | 500 x 40 = 20,000 | Safety rule only; queue if eligible |
+| MYR 10,000 outstanding, 5 days overdue, Regular tier | 10,000 x max(0, 5 - 7) = 0 | No alert; outside queue |
+| First scenario, last sent two days ago | Same score; five-day spacing fails | Ranked with exclusion reason; outside queue |
+| First scenario, do-not-contact customer | Same score; contact check fails | Ranked and included in balances; outside queue |
+| Invoice paid in full | Outstanding and score become zero | Retained snapshot, no active rank or queue entry |
+
+### Follow-up API
+
+- `POST /api/followups/refresh`: calculate and persist today's results, then return the typed workspace. No request body is required.
+- `GET /api/followups`: read the last successful saved workspace without creating records. Before the first successful refresh, returns an empty workspace with `computed_at: null`.
+- Both require `X-Role: Owner` or `Finance`. Existing invoice/payment endpoints remain available and refresh eligibility inside their write transactions.
+- The workspace contains `as_of_date`, `computed_at`, `customers`, `invoices` with `calculation`, `rules`, `dashboard`, `queue_ids` and `alerts`. Money and score values are decimal strings; dates are ISO dates. GET returns the saved reference date, which may be earlier than today until refreshed.
+
+Snapshots are refreshed in place for the current Malaysia date; earlier dates are preserved. Current-day snapshots also retain paid/ineligible invoices with null ranks. Company rule-row locking serializes refreshes and invoice/payment writes. Each successful refresh appends an audit event containing the saved workspace for consistent readback, including empty datasets. Failures keep the last successful workspace intact.
+
+Dashboard alerts go to the configured primary approver; leave routing is deferred. Refresh preserves existing alert decisions. It updates current trigger details and dismisses active alerts that lose eligibility, belong to an earlier date or have an outdated recipient. It does not reopen an already dismissed/actioned decision; queue eligibility is separate from alert acknowledgement. No email, WhatsApp or reminder dispatch is performed.
+
+Initial API-mode load, Refresh now and successful invoice/payment writes use the backend workspace. Dashboard shows rankings and active alerts; Today's Queue uses eligibility instead of approval status. Calculation details show exclusions and holiday/spacing inputs. Standalone `VITE_DATA_MODE=demo` remains a local template preview.
+
+### Verification
+
+The backend suite covers scoring boundaries, holiday/weekend/year boundaries, Malaysia midnight, per-invoice spacing, duplicate/concurrent refreshes, alert decisions, historical snapshots, transactional rollback, migration compatibility, permissions and company isolation. With `RUN_BROWSER_TESTS=1`, it also runs real API browser checks for payment persistence, rankings, suppression reasons and queue removal after payment/reload. Template browser screenshots are written to ignored `test-results/` so tests do not overwrite reference artwork.
+
+Saved reminder drafting, version-bound approvals, leave routing, two-person approval, simulated dispatch, AI and scheduled refresh jobs remain subsequent milestones. Refresh is manual/on-load/on-write; there is no automatic daily scheduler yet.

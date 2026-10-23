@@ -2,6 +2,9 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   canTransition,
+  getVisibleInvoices,
+  getGraceDays,
+  cleanFilters,
   isRole,
   customers,
   daysOverdue,
@@ -92,5 +95,60 @@ describe('demo invoice policy', () => {
         'Simulated sent',
       ),
     ).toBe(false);
+  });
+});
+
+describe('saved follow-up results', () => {
+  const calculated: Invoice = {
+    ...initialInvoices[0],
+    status: 'Not started',
+    calculation: {
+      outstanding_amount: '60.00',
+      days_overdue: 8,
+      grace_days: 7,
+      effective_days: 1,
+      score: '60.00',
+      rank: 2,
+      trigger_type: 'threshold',
+      eligible: true,
+      exclusion_reasons: [],
+      holidays_excluded: ['2026-10-20'],
+      last_sent_date: null,
+      reason: 'Server calculation',
+    },
+  };
+  it('uses backend amounts and calculations despite local preview overrides', () => {
+    expect(outstanding(calculated)).toBe(60);
+    expect(daysOverdue(calculated)).toBe(8);
+    expect(priority(calculated, 999)).toBe(60);
+    expect(getGraceDays(calculated, { [calculated.customerId]: 999 })).toBe(7);
+  });
+  it('uses eligibility for the queue independently of approval status', () => {
+    const blocked: Invoice = {
+      ...calculated,
+      id: 'BLOCKED',
+      status: 'Needs review',
+      calculation: { ...calculated.calculation!, eligible: false, rank: 1 },
+    };
+    const rows = getVisibleInvoices([blocked, calculated], cleanFilters, {}, 'queue');
+    assert.deepEqual(
+      rows.map((i) => i.id),
+      [calculated.id],
+    );
+    assert.deepEqual(
+      getVisibleInvoices([calculated, blocked], cleanFilters, {}, 'ranked').map(
+        (i) => i.id,
+      ),
+      ['BLOCKED', calculated.id],
+    );
+    assert.equal(
+      getVisibleInvoices(
+        [calculated, blocked],
+        { ...cleanFilters, status: 'Not eligible' },
+        {},
+        'all',
+      ).length,
+      1,
+    );
   });
 });
