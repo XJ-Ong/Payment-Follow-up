@@ -194,6 +194,68 @@ uv run pytest tests -q
 
 For standalone template browser checks on this Windows setup, set `$env:PLAYWRIGHT_CHANNEL='msedge'` before `npm run test:e2e`, or install the Playwright Chromium browser.
 
+
+## Connected invoice/payment milestone
+
+The frontend now defaults to the FastAPI API. Owner and Finance can create invoices and record payments; Other Staff is restricted. The former draft-only role has been removed. `X-Role` is a demo switch, not production authentication.
+
+From the repository root, configure `.env` using `.env.example`, then start PostgreSQL:
+
+```powershell
+docker compose up -d db
+cd src/backend
+uv sync
+uv run alembic upgrade head
+uv run python -m app.db.seed
+uv run uvicorn app.main:app --reload --port 8000
+```
+
+In another terminal, from the repository root:
+
+```powershell
+npm install
+npm run dev
+```
+
+Set `VITE_API_URL=http://localhost:8000` and `VITE_DATA_MODE=api`. Restart Vite after changing environment variables. Backend `CORS_ORIGINS` is a comma-separated list of allowed local frontend origins. For a standalone template preview use `VITE_DATA_MODE=demo`; those template edits are not persisted. API mode saves invoices/payments and uses the current Malaysia date. Rules and reminder screens still contain prototype behavior; durable reminder workflow, dual approvals and dispatch remain future integration work.
+
+### API contract
+
+- `GET /api/health`: database connectivity; 503 when unavailable.
+- `GET /api/invoices`: invoice rows, adapter-backed customers/preferences and Malaysia `as_of_date`.
+- `POST /api/invoices`: `invoice_no`, `client_id` (UUID), `issue_date`, `due_date`, `total_amount`, optional `initial_payment`.
+- `POST /api/invoices/{uuid}/payments`: `amount`, `received_date`, optional `payment_type` (`deposit`, `partial`, `full`) and `reference_number`.
+
+Business routes require `X-Role: Owner` or `Finance`. Unsupported/missing roles and Other Staff return 403; invalid inputs return 422; duplicate invoice numbers return 409. API money fields use decimal strings and dates use `YYYY-MM-DD`. Invoice responses include total, summed payments and calculated outstanding balance. Payment writes lock the invoice, reject overpayment and update financial status in the same transaction, including audit events.
+
+### Migrations and checks
+
+The initial revision uses a frozen schema snapshot. On a fresh database it creates the eleven plugin tables. On an existing database it compares the schema and adopts it only when compatible, preserving records. If it reports differences, review and reconcile them before retrying; do not blindly stamp the database. Baseline downgrade is disabled. Seeds are separate and do not overwrite existing invoices.
+
+```powershell
+# In src/backend
+uv run alembic revision --autogenerate -m "describe schema change"
+# Review the generated migration before applying it
+uv run alembic upgrade head
+uv run pytest tests -q
+# At repository root
+npm test
+npm run build
+npm run test:e2e
+```
+
+Backend integration tests create and remove a uniquely named temporary database on the configured PostgreSQL server; the local development user needs CREATE DATABASE permission. They do not write to the development database. Browser template tests explicitly use demo mode; API browser tests cover the persistent journey separately.
+
+To include the real API browser persistence check (using the installed Edge browser):
+
+```powershell
+# In src/backend; the test manages its temporary database and API server
+$env:RUN_BROWSER_TESTS='1'
+uv run pytest tests -q
+```
+
+For standalone template browser checks on this Windows setup, set `$env:PLAYWRIGHT_CHANNEL='msedge'` before `npm run test:e2e`, or install the Playwright Chromium browser.
+
 Module Progress
 
 ✅ Frontend layout & navigation
