@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { toast } from 'sonner';
 import { demoMode, loadWorkspace, createInvoice, recordPayment } from './api';
 import {
   REFERENCE_DATE,
@@ -43,17 +44,9 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
   const [failRefresh, setFailRefresh] = useState(false);
-  const [toast, setToast] = useState('');
   const [logs, setLogs] = useState(['Demo workspace opened. All delivery is simulated.']);
   const [graceOverrides, setGraceOverrides] = useState<GraceOverrides>({});
   const [refreshLabel, setRefreshLabel] = useState('All changes up to date');
-
-  useEffect(() => {
-    if (toast) {
-      const timeout = setTimeout(() => setToast(''), 4500);
-      return () => clearTimeout(timeout);
-    }
-  }, [toast]);
 
   const totals = getInvoiceTotals(invoices);
   const balances = getCustomerBalances(invoices, customers);
@@ -79,32 +72,50 @@ export default function App() {
     setRole(nextRole);
     setSelected(null);
     setAdding(false);
+    toast.info(`Demo role changed to ${nextRole}.`, { id: 'role-change' });
   }
 
-  function record(message: string) {
+  function record(message: string, notify = true) {
     setLogs((previous) => [message, ...previous]);
-    setToast(message);
+    if (notify) toast.success(message);
   }
 
   async function addInvoice(invoice: Invoice, issueDate: string) {
     if (demoMode) setInvoices((previous) => [...previous, invoice]);
     else {
-      await createInvoice(invoice, role, issueDate);
+      const saving = createInvoice(invoice, role, issueDate);
+      toast.promise(saving, {
+        loading: 'Saving invoice…',
+        success: 'Invoice saved.',
+        error: (err) => (err instanceof Error ? err.message : 'Unable to save invoice'),
+      });
+      await saving;
       await refresh();
     }
     setAdding(false);
-    record(`${invoice.id}: invoice added.`);
+    record(`${invoice.id}: invoice added.`, demoMode);
   }
 
   async function payInvoice(amount: string, receivedDate: string) {
     if (!current || demoMode) return;
-    await recordPayment(current, role, amount, receivedDate);
+    const saving = recordPayment(current, role, amount, receivedDate);
+    toast.promise(saving, {
+      loading: 'Recording payment…',
+      success: 'Payment saved.',
+      error: (err) => (err instanceof Error ? err.message : 'Unable to record payment'),
+    });
+    await saving;
     await refresh();
-    record(`${current.id}: payment recorded.`);
+    record(`${current.id}: payment recorded.`, false);
   }
 
   function updateStatus(invoice: Invoice, status: Status, reminder: string) {
-    if (!canTransition(invoice, getInvoiceCustomer(invoice), role, status)) return;
+    if (!canTransition(invoice, getInvoiceCustomer(invoice), role, status)) {
+      toast.warning('This follow-up action is unavailable.', {
+        description: 'Check the invoice status and your role permissions.',
+      });
+      return;
+    }
 
     setInvoices((previous) =>
       previous.map((existing) =>
@@ -124,21 +135,30 @@ export default function App() {
     );
   }
 
-  async function refresh() {
+  async function refresh(skipSimulatedFailure = false) {
+    const notification = toast.loading('Refreshing invoices…', {
+      id: 'workspace-refresh',
+    });
     setLoading(true);
     setError(false);
     try {
       if (demoMode) await new Promise((resolve) => setTimeout(resolve, 700));
-      if (failRefresh) throw new Error('Simulated connection failure');
+      if (failRefresh && !skipSimulatedFailure)
+        throw new Error('Simulated connection failure');
       if (!demoMode) {
         const data = await loadWorkspace(role);
         setCustomers(data.customers);
         setInvoices(data.invoices);
       }
       setRefreshLabel('Refreshed just now');
+      toast.success('Invoices refreshed.', { id: notification });
     } catch (err) {
       setError(true);
-      setToast(err instanceof Error ? err.message : 'Unable to load invoices');
+      toast.error(err instanceof Error ? err.message : 'Unable to load invoices', {
+        id: notification,
+        duration: 8000,
+        action: { label: 'Retry', onClick: retryConnection },
+      });
     } finally {
       setLoading(false);
     }
@@ -162,7 +182,10 @@ export default function App() {
       .catch((err) => {
         if (!cancelled) {
           setError(true);
-          setToast(err.message);
+          toast.error(err instanceof Error ? err.message : 'Unable to load invoices', {
+            duration: 8000,
+            action: { label: 'Retry', onClick: retryConnection },
+          });
         }
       })
       .finally(() => {
@@ -175,11 +198,7 @@ export default function App() {
 
   function retryConnection() {
     setFailRefresh(false);
-    if (failRefresh) {
-      setError(false);
-      return;
-    }
-    void refresh();
+    void refresh(true);
   }
 
   function changeGraceDays(customerId: string, days: number) {
@@ -245,12 +264,12 @@ export default function App() {
       refreshLabel={refreshLabel}
       onNavigate={navigate}
       onRoleChange={changeRole}
-      onNotify={setToast}
-      onRefresh={refresh}
+      onNotify={(message) => toast.info(message)}
+      onRefresh={() => void refresh()}
       onAdd={() => setAdding(true)}
       overlays={
         <>
-          {toast && <Toast message={toast} onDismiss={() => setToast('')} />}
+          <Toast />
           {adding && role !== 'Other Staff' && (
             <AddInvoiceDialog
               customers={customers}

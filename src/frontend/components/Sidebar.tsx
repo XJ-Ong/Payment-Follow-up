@@ -139,6 +139,7 @@ export default function Sidebar({
               <button
                 key={label}
                 title={label}
+                aria-current={active === label ? 'page' : undefined}
                 className={`nav-item ${active === label ? 'active' : ''} ${group ? 'nav-divider' : ''}`}
                 onClick={() => {
                   onNavigate(label);

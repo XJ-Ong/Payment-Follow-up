@@ -157,6 +157,21 @@ npm run dev
 
 Set `VITE_API_URL=http://localhost:8000` and `VITE_DATA_MODE=api`. Restart Vite after changing environment variables. Backend `CORS_ORIGINS` is a comma-separated list of allowed local frontend origins. For a standalone template preview use `VITE_DATA_MODE=demo`; those template edits are not persisted. API mode saves invoices/payments and uses the current Malaysia date. Rules and reminder screens still contain prototype behavior; durable reminder workflow, dual approvals and dispatch remain future integration work.
 
+### Production security headers
+
+The Vite development and preview servers emit baseline response headers for the frontend:
+Content-Security-Policy, Strict-Transport-Security, X-Content-Type-Options, X-Frame-Options,
+Referrer-Policy and Permissions-Policy. The API emits the protections that apply to API
+responses. API HSTS is enabled only when `ENABLE_HSTS=true`, because HSTS must not be sent
+over local HTTP.
+
+For production, configure the public HTTPS reverse proxy or hosting platform to preserve these
+headers on every frontend response, redirect HTTP to HTTPS, and set `ENABLE_HSTS=true` for the
+API. Set a production `VITE_API_URL` so the generated CSP `connect-src` allows the real API
+origin. Verify the public URL with the [Mozilla HTTP Observatory](https://observatory.mozilla.org/)
+after deployment; a B grade is 70–79 points, but the exact score can change as Observatory tests
+and modifiers evolve. Do not use the local demo `X-Role` header as production authentication.
+
 ### API contract
 
 - `GET /api/health`: database connectivity; 503 when unavailable.
