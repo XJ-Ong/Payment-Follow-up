@@ -39,7 +39,7 @@ class AppUser(AdapterModel):
     email: str | None = None
     department: str | None = None
     reports_to: UUID | None = None
-    role: str  # fixture codes: owner, finance, preparer, other_staff
+    role: str  # fixture codes: owner, finance, other_staff
 
 
 # --- Clients ---

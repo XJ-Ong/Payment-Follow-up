@@ -3,8 +3,8 @@ The synthetic Orbyte world
 
 This is data only: MockOrbyteAdapter loads it at construction.
 
-World: 1 company (Maju Jaya Enterprise), 4 users (Owner/Finance/Preparer/
-Other), 10 clients, 6 projects, 3 milestones (MLS-02/03 are the S12
+World: 1 company (Maju Jaya Enterprise), 3 users (Owner/Finance/Other
+staff), 10 clients, 6 projects, 3 milestones (MLS-02/03 are the S12
 auto-suggest candidates), 1 leave record and 2 public holidays.
 
 Conventions (same as app/db/demo_data.py):
@@ -20,7 +20,7 @@ FIXTURE = {
     "company": {"id": "COMP-01", "name": "Maju Jaya Enterprise Sdn Bhd"},
 
     # role is the fixture code our simulated X-Role handling maps to §3:
-    # owner | finance | preparer | other_staff
+    # owner | finance | other_staff
     "users": [
         {
             "id": "USR-01",
@@ -37,14 +37,6 @@ FIXTURE = {
             "department": "Finance",
             "reports_to": "USR-01",
             "role": "finance",
-        },
-        {
-            "id": "USR-03",
-            "name": "Cik Aina",
-            "email": "aina@majujaya.my",
-            "department": "Sales & Admin",
-            "reports_to": "USR-02",
-            "role": "preparer",
         },
         {
             "id": "USR-04",

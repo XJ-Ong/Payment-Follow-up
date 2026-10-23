@@ -48,7 +48,6 @@ RULE_ID = UUID("00000000-0000-4000-8000-000000000002")
 COMPANY_ID = external_uuid("COMP-01")
 FINANCE_ID = external_uuid("USR-02")  # primary approver (leader's leave fixture)
 OWNER_ID = external_uuid("USR-01")  # backup approver + second approval
-PREPARER_ID = external_uuid("USR-03")
 
 TODAY = date.today()
 NOW_UTC = datetime.now(timezone.utc)
@@ -199,7 +198,6 @@ def seed(reset: bool = False) -> None:
                 company_id=COMPANY_ID,
                 invoice_id=invoice_ids[row["invoice_no"]],
                 snapshot_id=None,  # no snapshot row for pre-existing history
-                prepared_by=PREPARER_ID,
                 version=1,
                 channel=CHANNEL[profile["preferred_channel"]],
                 language=LANGUAGE[profile["language"]],
