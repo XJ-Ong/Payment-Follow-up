@@ -8,6 +8,8 @@ A plugin concept for Orbyte's Work module that helps SMEs decide who to chase fo
 
 ## Architecture
 
+**Current messaging scope:** Telegram sends real messages; WhatsApp and email remain simulated. The standalone transport is implemented, but integration with approvals, database delivery records and the frontend is pending. See the [messaging setup and team integration contract](docs/messaging.md) before integrating. The architecture below includes planned services, not only completed features.
+
 ```
 +---------------------------------------------------------------+
 |  Browser: React (Vite) single-page app                        |
