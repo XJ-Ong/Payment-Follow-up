@@ -1,6 +1,6 @@
 export const REFERENCE_DATE = '2026-10-22';
-export type Role = 'Owner' | 'Finance' | 'Preparer' | 'Other Staff';
-export const roles: Role[] = ['Owner', 'Finance', 'Preparer', 'Other Staff'];
+export type Role = 'Owner' | 'Finance' | 'Other Staff';
+export const roles: Role[] = ['Owner', 'Finance', 'Other Staff'];
 
 export function isRole(value: string): value is Role {
   return roles.some((role) => role === value);
@@ -21,6 +21,10 @@ export type Customer = {
   doNotContact: boolean;
 };
 export type Invoice = {
+  databaseId?: string;
+  customer?: Customer;
+  asOf?: string;
+  financialStatus?: string;
   id: string;
   customerId: string;
   total: number;
@@ -177,9 +181,13 @@ export const initialInvoices: Invoice[] = [
     preparedBy: 'Daniel Tan',
   },
 ];
-export const outstanding = (i: Invoice) => Math.max(0, i.total - i.payments);
+export const outstanding = (i: Invoice) =>
+  Math.max(0, Math.round((i.total - i.payments) * 100) / 100);
 export const daysOverdue = (i: Invoice) =>
-  Math.max(0, Math.floor((Date.parse(REFERENCE_DATE) - Date.parse(i.due)) / 86400000));
+  Math.max(
+    0,
+    Math.floor((Date.parse(i.asOf ?? REFERENCE_DATE) - Date.parse(i.due)) / 86400000),
+  );
 export const priority = (i: Invoice, grace: number) =>
   outstanding(i) * Math.max(0, daysOverdue(i) - grace);
 export const money = (n: number) =>
@@ -199,6 +207,7 @@ export function canTransition(
   status: Status,
 ) {
   if (
+    !roles.includes(role) ||
     role === 'Other Staff' ||
     customer.doNotContact ||
     outstanding(i) <= 0 ||
@@ -212,7 +221,8 @@ export function canTransition(
 }
 
 export function getInvoiceCustomer(invoice: Invoice): Customer {
-  const customer = customers.find((customer) => customer.id === invoice.customerId);
+  const customer =
+    invoice.customer ?? customers.find((customer) => customer.id === invoice.customerId);
   if (!customer) throw new Error(`Unknown customer: ${invoice.customerId}`);
   return customer;
 }
@@ -262,8 +272,11 @@ export function getVisibleInvoices(
     );
 }
 
-export function getCustomerBalances(invoices: Invoice[]): CustomerBalance[] {
-  return customers.map((customer) => ({
+export function getCustomerBalances(
+  invoices: Invoice[],
+  clientList = customers,
+): CustomerBalance[] {
+  return clientList.map((customer) => ({
     name: customer.name,
     balance: getTotalOutstanding(
       invoices.filter((invoice) => invoice.customerId === customer.id),

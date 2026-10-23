@@ -1,12 +1,14 @@
 import { Settings2 } from 'lucide-react';
-import { customers, type GraceOverrides } from '../model';
+import { type Customer, type GraceOverrides } from '../model';
 
 export default function SettingsPage({
+  customers,
   graceOverrides,
   failRefresh,
   onGraceChange,
   onFailRefreshChange,
 }: {
+  customers: Customer[];
   graceOverrides: GraceOverrides;
   failRefresh: boolean;
   onGraceChange: (customerId: string, days: number) => void;
@@ -23,7 +25,8 @@ export default function SettingsPage({
       </div>
       <div className="rule-note">
         Priority = outstanding amount × max(0, days overdue − grace days). Owner and
-        Finance may approve submitted reminders. Preparer may create and submit drafts.
+        Finance may approve submitted reminders. Owner and Finance may create and submit
+        drafts.
       </div>
       {customers.map((c) => (
         <div className="rule-row" key={c.id}>
@@ -56,8 +59,8 @@ export default function SettingsPage({
         Simulate an error on the next refresh
       </label>
       <p className="muted">
-        Rules and invoices reset when this page is reloaded. All dates use the fixed demo
-        reference date.
+        Rule edits are a local preview and reset on reload. In API mode, invoices and
+        payments persist and overdue calculations use the Malaysia date.
       </p>
     </section>
   );

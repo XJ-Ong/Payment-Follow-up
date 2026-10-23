@@ -1,23 +1,12 @@
-"""Create the 11 plugin-owned tables (idempotent: existing tables are skipped).
-
-Run from src/backend:  uv run python -m app.db.init_db
-No migrations in the MVP (README): re-run after model changes, or drop and re-init.
-"""
-
-from sqlalchemy import inspect
-
-from . import models  # noqa: F401  (importing registers every model on Base.metadata)
-from .base import Base
-from .session import engine
-
+"""Compatibility entrypoint: apply migrations, including safe baseline adoption."""
+from pathlib import Path
+from alembic import command
+from alembic.config import Config
 
 def init_db():
-    Base.metadata.create_all(engine)
-    tables = sorted(inspect(engine).get_table_names())
-    print(f"Database ready. Tables ({len(tables)}):")
-    for name in tables:
-        print(f"  - {name}")
-
+    root = Path(__file__).resolve().parents[2]
+    config = Config(str(root / "alembic.ini"))
+    command.upgrade(config, "head")
 
 if __name__ == "__main__":
     init_db()

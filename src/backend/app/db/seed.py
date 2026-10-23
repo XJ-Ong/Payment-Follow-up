@@ -25,7 +25,7 @@ from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 
 from ..ids import external_uuid
 from .base import Base
@@ -48,7 +48,6 @@ RULE_ID = UUID("00000000-0000-4000-8000-000000000002")
 COMPANY_ID = external_uuid("COMP-01")
 FINANCE_ID = external_uuid("USR-02")  # primary approver (leader's leave fixture)
 OWNER_ID = external_uuid("USR-01")  # backup approver + second approval
-PREPARER_ID = external_uuid("USR-03")
 
 TODAY = date.today()
 NOW_UTC = datetime.now(timezone.utc)
@@ -104,7 +103,11 @@ def seed(reset: bool = False) -> None:
     if reset:
         print("Resetting: dropping all tables...")
         Base.metadata.drop_all(engine)
-    Base.metadata.create_all(engine)  # harmless if init_db already ran
+        with engine.begin() as connection:
+            if connection.dialect.has_table(connection, "alembic_version"):
+                connection.execute(text("DELETE FROM alembic_version"))
+    from .init_db import init_db
+    init_db()
 
     with SessionLocal() as session:
         existing = session.scalar(select(func.count()).select_from(Invoice))
@@ -199,7 +202,7 @@ def seed(reset: bool = False) -> None:
                 company_id=COMPANY_ID,
                 invoice_id=invoice_ids[row["invoice_no"]],
                 snapshot_id=None,  # no snapshot row for pre-existing history
-                prepared_by=PREPARER_ID,
+                prepared_by=FINANCE_ID,
                 version=1,
                 channel=CHANNEL[profile["preferred_channel"]],
                 language=LANGUAGE[profile["language"]],

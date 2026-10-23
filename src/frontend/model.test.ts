@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   canTransition,
+  isRole,
   customers,
   daysOverdue,
   initialInvoices,
@@ -23,6 +24,9 @@ describe('demo invoice policy', () => {
     expect(initialInvoices.reduce((n, i) => n + outstanding(i), 0)).toBe(45000);
     expect(initialInvoices.filter((i) => i.status === 'Needs review')).toHaveLength(3);
   });
+  it('keeps currency subtraction at cent precision', () => {
+    expect(outstanding({ ...invoice, total: 100.1, payments: 40.1 })).toBe(60);
+  });
   it('uses zero for future invoices, paid balances and days inside grace', () => {
     expect(priority({ ...invoice, due: '2026-10-21' }, 3)).toBe(0);
     expect(daysOverdue({ ...invoice, due: '2026-11-10' })).toBe(0);
@@ -31,18 +35,31 @@ describe('demo invoice policy', () => {
   it('allows only Owner and Finance to approve submitted reminders', () => {
     expect(canTransition(invoice, customer, 'Owner', 'Simulated sent')).toBe(true);
     expect(canTransition(invoice, customer, 'Finance', 'Simulated sent')).toBe(true);
-    expect(canTransition(invoice, customer, 'Preparer', 'Simulated sent')).toBe(false);
     expect(canTransition(invoice, customer, 'Other Staff', 'Simulated sent')).toBe(false);
+    expect(canTransition(invoice, customer, 'Other Staff', 'Simulated sent')).toBe(false);
+  });
+  it('removes the obsolete role and lets both active roles prepare', () => {
+    expect(isRole('Preparer')).toBe(false);
+    for (const role of ['Owner', 'Finance'] as const) {
+      expect(
+        canTransition(
+          { ...invoice, status: 'Not started' },
+          customer,
+          role,
+          'Draft prepared',
+        ),
+      ).toBe(true);
+    }
   });
   it('requires preparation and submission before approval', () => {
     const draft: Invoice = { ...invoice, status: 'Not started' };
-    expect(canTransition(draft, customer, 'Preparer', 'Draft prepared')).toBe(true);
+    expect(canTransition(draft, customer, 'Finance', 'Draft prepared')).toBe(true);
     expect(canTransition(draft, customer, 'Owner', 'Simulated sent')).toBe(false);
     expect(
       canTransition(
         { ...draft, status: 'Draft prepared' },
         customer,
-        'Preparer',
+        'Finance',
         'Needs review',
       ),
     ).toBe(true);
