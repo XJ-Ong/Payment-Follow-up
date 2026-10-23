@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react';
+import { demoMode, loadWorkspace, createInvoice, recordPayment } from './api';
 import {
   REFERENCE_DATE,
+  customers as demoCustomers,
+  type Customer,
   canTransition,
   cleanFilters,
   getCustomerBalances,
@@ -29,7 +32,8 @@ import SettingsPage from './pages/SettingsPage';
 import WeeklySummaryPage from './pages/WeeklySummaryPage';
 
 export default function App() {
-  const [invoices, setInvoices] = useState<Invoice[]>(initialInvoices);
+  const [invoices, setInvoices] = useState<Invoice[]>(demoMode ? initialInvoices : []);
+  const [customers, setCustomers] = useState<Customer[]>(demoMode ? demoCustomers : []);
   const [active, setActive] = useState<Page>('Dashboard');
   const [role, setRole] = useState<Role>('Owner');
   const [filters, setFilters] = useState<Filters>(cleanFilters);
@@ -52,7 +56,7 @@ export default function App() {
   }, [toast]);
 
   const totals = getInvoiceTotals(invoices);
-  const balances = getCustomerBalances(invoices);
+  const balances = getCustomerBalances(invoices, customers);
   const visible = getVisibleInvoices(
     invoices,
     applied,
@@ -82,10 +86,21 @@ export default function App() {
     setToast(message);
   }
 
-  function addInvoice(invoice: Invoice) {
-    setInvoices((previous) => [...previous, invoice]);
+  async function addInvoice(invoice: Invoice, issueDate: string) {
+    if (demoMode) setInvoices((previous) => [...previous, invoice]);
+    else {
+      await createInvoice(invoice, role, issueDate);
+      await refresh();
+    }
     setAdding(false);
     record(`${invoice.id}: invoice added.`);
+  }
+
+  async function payInvoice(amount: string, receivedDate: string) {
+    if (!current || demoMode) return;
+    await recordPayment(current, role, amount, receivedDate);
+    await refresh();
+    record(`${current.id}: payment recorded.`);
   }
 
   function updateStatus(invoice: Invoice, status: Status, reminder: string) {
@@ -109,23 +124,62 @@ export default function App() {
     );
   }
 
-  function refresh() {
+  async function refresh() {
     setLoading(true);
     setError(false);
-    setTimeout(() => {
-      setLoading(false);
-      if (failRefresh) setError(true);
-      else {
-        setRefreshLabel('Refreshed just now');
-        setToast('Demo records refreshed. Your changes are preserved.');
+    try {
+      if (demoMode) await new Promise((resolve) => setTimeout(resolve, 700));
+      if (failRefresh) throw new Error('Simulated connection failure');
+      if (!demoMode) {
+        const data = await loadWorkspace(role);
+        setCustomers(data.customers);
+        setInvoices(data.invoices);
       }
-    }, 700);
+      setRefreshLabel('Refreshed just now');
+    } catch (err) {
+      setError(true);
+      setToast(err instanceof Error ? err.message : 'Unable to load invoices');
+    } finally {
+      setLoading(false);
+    }
   }
+
+  useEffect(() => {
+    if (demoMode) return;
+    let cancelled = false;
+    setInvoices([]);
+    setCustomers([]);
+    if (role === 'Other Staff') return;
+    setLoading(true);
+    setError(false);
+    loadWorkspace(role)
+      .then((data) => {
+        if (!cancelled) {
+          setInvoices(data.invoices);
+          setCustomers(data.customers);
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setError(true);
+          setToast(err.message);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [role]);
 
   function retryConnection() {
     setFailRefresh(false);
-    setError(false);
-    setToast('Demo connection restored.');
+    if (failRefresh) {
+      setError(false);
+      return;
+    }
+    void refresh();
   }
 
   function changeGraceDays(customerId: string, days: number) {
@@ -140,6 +194,7 @@ export default function App() {
       case 'Rules & Settings':
         return (
           <SettingsPage
+            customers={customers}
             graceOverrides={graceOverrides}
             failRefresh={failRefresh}
             onGraceChange={changeGraceDays}
@@ -147,7 +202,13 @@ export default function App() {
           />
         );
       case 'Customer Profiles':
-        return <CustomerPage balances={balances} graceOverrides={graceOverrides} />;
+        return (
+          <CustomerPage
+            customers={customers}
+            balances={balances}
+            graceOverrides={graceOverrides}
+          />
+        );
       case 'Activity Log':
         return <ActivityPage logs={logs} />;
       case 'Weekly Summary':
@@ -192,6 +253,7 @@ export default function App() {
           {toast && <Toast message={toast} onDismiss={() => setToast('')} />}
           {adding && role !== 'Other Staff' && (
             <AddInvoiceDialog
+              customers={customers}
               invoices={invoices}
               onClose={() => setAdding(false)}
               onAdd={addInvoice}
@@ -199,6 +261,9 @@ export default function App() {
           )}
           {current && role !== 'Other Staff' && (
             <ReviewDrawer
+              key={current.id}
+              databaseMode={!demoMode}
+              onPayment={payInvoice}
               invoice={current}
               graceDays={getGraceDays(current, graceOverrides)}
               role={role}

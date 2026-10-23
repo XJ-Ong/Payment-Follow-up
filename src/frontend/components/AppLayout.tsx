@@ -83,7 +83,14 @@ export default function AppLayout({
           <div className="date-line">
             <span>
               <CalendarDays size={14} />
-              Demo reference date: <strong>22 Oct 2026</strong>
+              Reference date:{' '}
+              <strong>
+                {import.meta.env.VITE_DATA_MODE === 'demo'
+                  ? '22 Oct 2026'
+                  : new Date().toLocaleDateString('en-GB', {
+                      timeZone: 'Asia/Kuala_Lumpur',
+                    })}
+              </strong>
             </span>
             <span>
               <span className="live-dot" />

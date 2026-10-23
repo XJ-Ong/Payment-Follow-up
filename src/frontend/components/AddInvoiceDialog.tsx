@@ -1,19 +1,22 @@
 import { useState, type FormEvent } from 'react';
 import { Plus, ShieldCheck } from 'lucide-react';
-import { customers, type Invoice, validateInvoice } from '../model';
+import { type Customer, type Invoice, validateInvoice } from '../model';
 import Modal from './Modal';
 
 export default function AddInvoiceDialog({
+  customers,
   onClose,
   onAdd,
   invoices,
 }: {
+  customers: Customer[];
   onClose: () => void;
-  onAdd: (i: Invoice) => void;
+  onAdd: (i: Invoice, issueDate: string) => Promise<void>;
   invoices: Invoice[];
 }) {
   const [error, setError] = useState('');
-  function submit(e: FormEvent<HTMLFormElement>) {
+  const [saving, setSaving] = useState(false);
+  async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const data = new FormData(e.currentTarget);
     const id = String(data.get('id')).trim();
@@ -22,14 +25,24 @@ export default function AddInvoiceDialog({
     const due = String(data.get('due'));
     const validationError = validateInvoice({ id, total, payments, due }, invoices);
     if (validationError) return setError(validationError);
-    onAdd({
-      id,
-      customerId: String(data.get('customer')),
-      total,
-      payments,
-      due,
-      status: 'Not started',
-    });
+    setSaving(true);
+    try {
+      await onAdd(
+        {
+          id,
+          customerId: String(data.get('customer')),
+          total,
+          payments,
+          due,
+          status: 'Not started',
+        },
+        String(data.get('issue')),
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to save invoice');
+    } finally {
+      setSaving(false);
+    }
   }
   return (
     <Modal
@@ -82,6 +95,17 @@ export default function AddInvoiceDialog({
           </label>
         </div>
         <label>
+          Issue date
+          <input
+            name="issue"
+            type="date"
+            defaultValue={new Date().toLocaleDateString('en-CA', {
+              timeZone: 'Asia/Kuala_Lumpur',
+            })}
+            required
+          />
+        </label>
+        <label>
           Due date
           <input name="due" type="date" required />
         </label>
@@ -98,7 +122,7 @@ export default function AddInvoiceDialog({
           <button type="button" className="button" onClick={onClose}>
             Cancel
           </button>
-          <button className="button primary" type="submit">
+          <button className="button primary" type="submit" disabled={saving}>
             <Plus size={16} />
             Add Invoice
           </button>

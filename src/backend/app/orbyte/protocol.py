@@ -37,7 +37,7 @@ class OrbyteAdapter(Protocol):
         ...
 
     def get_user(self, user_id: UUID) -> AppUser:
-        """One user — approvers, preparers, recipients of alerts."""
+        """One user — approvers, draft authors, recipients of alerts."""
         ...
 
     def list_users(self, company_id: UUID) -> list[AppUser]:

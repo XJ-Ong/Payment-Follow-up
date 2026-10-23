@@ -30,6 +30,7 @@ test('desktop filters, invoice validation and simulated approval reconcile', asy
   await page.getByLabel('Invoice number').fill('INV-2026-042');
   await page.getByLabel('Invoice total (MYR)').fill('100');
   await page.getByLabel('Payments received (MYR)').fill('20');
+  await page.getByLabel('Issue date', { exact: true }).fill('2026-10-01');
   await page.getByLabel('Due date', { exact: true }).fill('2026-10-01');
   await dialog.getByRole('button', { name: 'Add Invoice', exact: true }).click();
   await expect(page.getByRole('alert')).toContainText('unique');
@@ -50,11 +51,11 @@ test('role restrictions, draft text retention and do-not-contact blocking', asyn
   page,
 }) => {
   await page.goto('/');
-  await page.getByLabel('DEMO ROLE').selectOption('Preparer');
+  await page.getByLabel('DEMO ROLE').selectOption('Finance');
   await page.getByRole('button', { name: 'INV-2026-042', exact: true }).click();
   await expect(
     page.getByRole('button', { name: 'Approve simulated send' }),
-  ).toBeDisabled();
+  ).toBeEnabled();
   await page.getByRole('button', { name: 'Close dialog' }).click();
   await page.getByRole('button', { name: 'INV-2026-041', exact: true }).click();
   await page.getByLabel('Reminder text').fill('A custom template reminder for the demo.');

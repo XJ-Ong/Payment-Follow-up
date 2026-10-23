@@ -31,7 +31,11 @@ export default function ReviewDrawer({
   role,
   onClose,
   onStatus,
+  databaseMode = false,
+  onPayment,
 }: {
+  databaseMode?: boolean;
+  onPayment?: (amount: string, receivedDate: string) => Promise<void>;
   invoice: Invoice;
   graceDays: number;
   role: Role;
@@ -40,6 +44,8 @@ export default function ReviewDrawer({
 }) {
   const c = getInvoiceCustomer(i);
   const [text, setText] = useState(i.reminder ?? createReminderText(i));
+  const [paymentError, setPaymentError] = useState('');
+  const [saving, setSaving] = useState(false);
   const blocked = isReminderBlocked(i);
   const editable = isReminderEditable(i);
   return (
@@ -50,6 +56,58 @@ export default function ReviewDrawer({
       drawer
     >
       <div className="drawer-body">
+        {databaseMode && (
+          <section className="detail-section">
+            <p>
+              Invoice and payment data is saved. Reminder workflow integration is the next
+              stage.
+            </p>
+            <p>Financial status: {i.financialStatus}</p>
+            {outstanding(i) > 0 && i.financialStatus !== 'void' && (
+              <form
+                onSubmit={async (event) => {
+                  event.preventDefault();
+                  const form = new FormData(event.currentTarget);
+                  setSaving(true);
+                  setPaymentError('');
+                  try {
+                    await onPayment?.(
+                      String(form.get('amount')),
+                      String(form.get('received')),
+                    );
+                  } catch (err) {
+                    setPaymentError(
+                      err instanceof Error ? err.message : 'Unable to record payment',
+                    );
+                  } finally {
+                    setSaving(false);
+                  }
+                }}
+              >
+                <label>
+                  Payment amount (MYR)
+                  <input
+                    name="amount"
+                    type="number"
+                    step="0.01"
+                    min="0.01"
+                    max={outstanding(i)}
+                    required
+                  />
+                </label>
+                <label>
+                  Received date
+                  <input name="received" type="date" defaultValue={i.asOf} required />
+                </label>
+                {paymentError && <p role="alert">{paymentError}</p>}
+                <button className="button primary" disabled={saving}>
+                  Record payment
+                </button>
+              </form>
+            )}
+          </section>
+        )}
+
         <div className="drawer-status">
           <StatusBadge status={i.status} />
           <span className="prototype-pill">Simulated delivery</span>
@@ -181,10 +239,10 @@ export default function ReviewDrawer({
         {!canApprove(role) && (
           <p>
             <ShieldCheck size={14} />
-            Preparer can create drafts but cannot approve.
+            Owner and Finance can prepare and approve drafts.
           </p>
         )}
-        {!blocked && i.status !== 'Simulated sent' && (
+        {!databaseMode && !blocked && i.status !== 'Simulated sent' && (
           <div className="drawer-actions">
             <button
               className="button"

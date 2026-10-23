@@ -1,10 +1,17 @@
-import { customers, money, type CustomerBalance, type GraceOverrides } from '../model';
+import {
+  type Customer,
+  money,
+  type CustomerBalance,
+  type GraceOverrides,
+} from '../model';
 import StatusBadge from '../components/StatusBadge';
 
 export default function CustomerPage({
+  customers,
   balances,
   graceOverrides,
 }: {
+  customers: Customer[];
   balances: CustomerBalance[];
   graceOverrides: GraceOverrides;
 }) {
