@@ -215,7 +215,6 @@ class ReminderDraft(Base):
     company_id: Mapped[UUID] = _company_id()
     invoice_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("invoice.id", ondelete="RESTRICT"))
     snapshot_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("priority_snapshot.id", ondelete="RESTRICT"))
-    prepared_by: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True))  # Orbyte ref
     version: Mapped[int] = mapped_column(Integer)
     channel: Mapped[str] = mapped_column(String(20))
     language: Mapped[str] = mapped_column(String(30))
