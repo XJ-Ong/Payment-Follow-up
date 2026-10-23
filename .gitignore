@@ -12,3 +12,4 @@ __pycache__/
 node_modules/
 src/backend/static/
 .DS_Store
+mem/

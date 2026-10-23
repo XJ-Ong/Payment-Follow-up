@@ -64,6 +64,9 @@ A plugin concept for Orbyte's Work module that helps SMEs decide who to chase fo
 | Hosting | Replit (Reserved VM), with its own Replit PostgreSQL |
 | Source control | GitHub: `main` (final, deployed), `dev` (integration), personal branches |
 
+The frontend source is in [`src/frontend`](src/frontend), while the backend package is in
+[`src/backend`](src/backend).
+
 ---
 
 ## Database setup (local)
