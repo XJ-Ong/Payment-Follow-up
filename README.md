@@ -63,4 +63,49 @@ A plugin concept for Orbyte's Work module that helps SMEs decide who to chase fo
 | Local development | Docker Compose for a per-developer Postgres |
 | Hosting | Replit (Reserved VM), with its own Replit PostgreSQL |
 | Source control | GitHub: `main` (final, deployed), `dev` (integration), personal branches |
- 
+
+---
+
+## Database setup (local)
+
+**Prerequisites:** [Docker](https://docs.docker.com/get-docker/) (with Compose) and [uv](https://docs.astral.sh/uv/).
+
+From the repo root:
+
+```bash
+# 1. Create your local config (first time only)
+cp .env.example .env
+
+# 2. Start PostgreSQL + Adminer
+docker compose up -d
+
+# 3. Enter the backend project
+cd src/backend
+
+# 4. Install Python dependencies (creates .venv from uv.lock)
+uv sync
+
+# 5. Check the connection (prints the PostgreSQL version)
+uv run python check_db.py
+
+# 6. Create the 11 tables
+uv run python -m app.db.init_db
+
+# 7. Load the demo data
+uv run python -m app.db.seed
+```
+
+| Command | What it does | Safe to re-run? |
+|---|---|---|
+| `check_db.py` | connects to the container and prints the server version | yes |
+| `app.db.init_db` | creates any missing tables (`create_all`); never drops or alters existing ones | yes |
+| `app.db.seed` | inserts the demo world (1 rule set, 10 client profiles, 20 invoices, 5 payments, 3 reminder histories); refuses to run twice | yes — prints `Already seeded` |
+| `app.db.seed --reset` | **drops all tables**, recreates and reseeds | **destructive** — wipes anything you entered |
+
+**Notes**
+
+* Steps 3–7 must run from `src/backend/` — the `app` package lives there (from the repo root you get `No module named app`).
+* Demo dates are **relative to the day you seed** (an invoice due 40 days ago stays 40 days overdue whenever the demo runs). To refresh them, re-run `app.db.seed --reset`.
+* There is no migration tool in the MVP: after changing a model, re-create from scratch with `app.db.seed --reset`.
+* Browse the data in **Adminer** at <http://localhost:8080> — server `db` (the Compose service name, *not* `localhost`), username `followup`, password `followup_dev_password`, database `followup`.
+* Stop the database with `docker compose down`; add `-v` to also delete the data volume (after that, run `init_db` and `seed` again).
