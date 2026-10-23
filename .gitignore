@@ -1,3 +1,10 @@
+node_modules/
+dist/
+.vite/
+*.local
+test-results/
+playwright-report/
+*.tsbuildinfo
 .env
 __pycache__/
 *.pyc

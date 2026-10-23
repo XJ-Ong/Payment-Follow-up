@@ -68,7 +68,27 @@ A plugin concept for Orbyte's Work module that helps SMEs decide who to chase fo
 
 ## Database setup (local)
 
-**Prerequisites:** [Docker](https://docs.docker.com/get-docker/) (with Compose) and [uv](https://docs.astral.sh/uv/).
+**Prerequisites:** [Docker](https://docs.docker.com/get-docker/) (with Compose), [Python 3.12+](https://www.python.org/downloads/), and [uv](https://docs.astral.sh/uv/).
+
+On Windows, install `uv` and a supported Python version from PowerShell:
+
+```powershell
+winget install --id=astral-sh.uv -e
+winget install --id=Python.Python.3.12 -e
+```
+
+Restart PowerShell after installation, then verify:
+
+```powershell
+uv --version
+python --version
+```
+
+If `python --version` still reports an older version, use uv's managed Python directly:
+
+```powershell
+uv python install 3.12
+```
 
 From the repo root:
 
