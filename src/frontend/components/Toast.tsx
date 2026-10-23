@@ -1,23 +1,16 @@
-import { Check, X } from 'lucide-react';
+import { Toaster } from 'sonner';
 
-export default function Toast({
-  message,
-  onDismiss,
-}: {
-  message: string;
-  onDismiss: () => void;
-}) {
+export default function Toast() {
   return (
-    <div className="toast" role="status">
-      <Check size={17} />
-      {message}
-      <button
-        className="icon-button"
-        aria-label="Dismiss notification"
-        onClick={onDismiss}
-      >
-        <X size={14} />
-      </button>
-    </div>
+    <Toaster
+      position="top-right"
+      richColors
+      closeButton
+      visibleToasts={3}
+      duration={4500}
+      offset={24}
+      mobileOffset={16}
+      toastOptions={{ style: { fontFamily: 'inherit' } }}
+    />
   );
 }

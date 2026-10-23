@@ -1447,30 +1447,6 @@ dd {
   line-height: 1.7;
   margin-top: 6px;
 }
-.toast {
-  position: fixed;
-  bottom: 24px;
-  left: calc(50% + 90px);
-  transform: translateX(-50%);
-  z-index: 90;
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  background: #fff;
-  border: 1px solid #deeadf;
-  border-radius: 7px;
-  box-shadow: 0 5px 25px #263e6120;
-  padding: 10px 13px;
-  font-size: 11px;
-  color: #677f72;
-  max-width: calc(100vw - 32px);
-}
-.toast > svg {
-  color: #72ad8c;
-}
-.toast > .icon-button {
-  margin-left: auto;
-}
 .settings {
   padding-bottom: 20px;
 }
@@ -1852,9 +1828,6 @@ dd {
     background: #15253d55;
     z-index: 25;
   }
-  .toast {
-    left: 50%;
-  }
   .chart-container {
     height: 230px;
   }
@@ -2167,14 +2140,6 @@ dd {
   }
   .weekly-body {
     padding: 23px;
-  }
-  .toast {
-    font-size: 10px;
-    bottom: 15px;
-    min-width: 270px;
-  }
-  .toast .icon-button {
-    width: 22px;
   }
   .permission {
     padding: 45px 20px;

@@ -37,6 +37,9 @@ test('desktop filters, invoice validation and simulated approval reconcile', asy
   await page.getByLabel('Invoice number').fill('INV-TEST-001');
   await dialog.getByRole('button', { name: 'Add Invoice', exact: true }).click();
   await expect(dialog).toHaveCount(0);
+  await expect(page.locator('[data-sonner-toast][data-type="success"]')).toContainText(
+    'INV-TEST-001: invoice added.',
+  );
   await expect(page.locator('.summary-card').first()).toContainText('MYR 45,080.00');
   await page.getByRole('button', { name: 'INV-2026-042', exact: true }).click();
   await expect(page.getByRole('dialog')).toContainText('262,500');
@@ -106,12 +109,20 @@ test('simulated loading failure can be recovered', async ({ page }) => {
   await page.getByLabel('Simulate an error on the next refresh').check();
   await page.getByRole('button', { name: 'Dashboard', exact: true }).click();
   await page.getByRole('button', { name: 'Refresh now' }).click();
+  await expect(page.locator('[data-sonner-toast][data-type="loading"]')).toContainText(
+    'Refreshing invoices',
+  );
   await expect(
     page.getByRole('heading', { name: 'Refreshing your workspace…' }),
   ).toBeVisible();
   await expect(
     page.getByRole('heading', { name: 'We couldn’t refresh your invoices' }),
   ).toBeVisible();
-  await page.getByRole('button', { name: 'Retry demo connection' }).click();
+  const notification = page.locator('[data-sonner-toast][data-type="error"]');
+  await expect(notification).toContainText('Simulated connection failure');
+  await notification.getByRole('button', { name: 'Retry', exact: true }).click();
   await expect(page.locator('tbody tr')).toHaveCount(7);
+  await expect(page.locator('[data-sonner-toast][data-type="success"]')).toContainText(
+    'Invoices refreshed.',
+  );
 });
