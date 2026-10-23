@@ -162,7 +162,7 @@ small {
   color: #8995a8;
   flex-shrink: 0;
 }
-.icon-button:hover {
+.icon-button:enabled:hover {
   background: #f0f4fc;
   color: #3577e9;
 }
@@ -258,19 +258,37 @@ small {
   font-size: 12px;
   font-weight: 500;
   white-space: nowrap;
+  transition:
+    background-color 150ms ease,
+    color 150ms ease,
+    transform 100ms ease;
 }
 .nav-item:hover {
-  background: #f6f8fc;
+  color: #245db8;
+  background: #edf4ff;
+}
+.nav-item:focus-visible {
+  outline: 2px solid #3879ee;
+  outline-offset: 2px;
 }
 .nav-item.active {
-  color: #3378ee;
-  background: #eef4ff;
+  color: #205fc4;
+  background: #e0ecff;
   font-weight: 600;
+}
+.nav-item.active:hover {
+  background: #d5e5ff;
+}
+.nav-item:active,
+.nav-item.active:active {
+  color: #1c51a5;
+  background: #c8dcfc;
+  transform: translateY(1px);
 }
 .nav-item.active:before {
   content: '';
   position: absolute;
-  left: -17px;
+  left: 0;
   top: 9px;
   bottom: 9px;
   width: 3px;
@@ -523,7 +541,7 @@ h1 {
   font-weight: 550;
   white-space: nowrap;
 }
-.button:hover {
+.button:enabled:hover {
   background: #f7f9ff;
   border-color: #b8c9e8;
 }
@@ -533,7 +551,7 @@ h1 {
   color: white;
   box-shadow: 0 2px 2px #2562d010;
 }
-.button.primary:hover {
+.button.primary:enabled:hover {
   background: #2469df;
   border-color: #2469df;
 }
@@ -983,7 +1001,7 @@ td small {
   gap: 3px;
   background: #f8faff;
 }
-.review-button:hover {
+.review-button:enabled:hover {
   background: #edf3ff;
 }
 .table-footer {
@@ -1617,7 +1635,7 @@ dd {
   padding: 0;
 }
 .is-collapsed .nav-item.active:before {
-  left: -12px;
+  left: 0;
 }
 .is-collapsed .sidebar-bottom {
   padding: 0 20px;
@@ -1694,7 +1712,7 @@ dd {
     gap: 10px;
   }
   .nav-item.active:before {
-    left: -14px;
+    left: 0;
   }
   main {
     padding: 25px 22px 0;
@@ -2173,6 +2191,116 @@ dd {
   .sidebar.mobile-open {
     visibility: visible;
   }
+}
+/* Shared feedback for controls across pages, dialogs, and drawers. */
+button,
+input,
+select,
+textarea,
+.menu-search,
+.date-range > div {
+  transition:
+    background-color 150ms ease,
+    border-color 150ms ease,
+    color 150ms ease,
+    box-shadow 150ms ease,
+    transform 100ms ease;
+}
+:is(
+    .button,
+    .icon-button,
+    .organisation,
+    .review-button,
+    .pagination button
+  ):enabled:hover {
+  background: #edf4ff;
+  border-color: #91b5ef;
+  color: #245db8;
+}
+.button.primary:enabled:hover {
+  background: #2469df;
+  border-color: #2469df;
+  color: white;
+  box-shadow: 0 3px 8px #2562d029;
+}
+:is(
+    .button,
+    .icon-button,
+    .organisation,
+    .review-button,
+    .pagination button
+  ):enabled:active {
+  background: #c8dcfc;
+  border-color: #6d9ee8;
+  color: #1c51a5;
+  transform: translateY(1px);
+}
+.button.primary:enabled:active {
+  background: #1c51b5;
+  border-color: #1c51b5;
+  color: white;
+  box-shadow: inset 0 2px 3px #12357333;
+}
+.invoice-link:enabled:hover {
+  color: #205fc4;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.invoice-link:enabled:active {
+  color: #173e83;
+  transform: translateY(1px);
+}
+button:enabled:focus-visible,
+a:focus-visible {
+  outline: 2px solid #3879ee;
+  outline-offset: 3px;
+  box-shadow: 0 0 0 4px #3879ee1f;
+}
+:is(input, select, textarea):enabled:not([readonly]):hover {
+  border-color: #91b5ef;
+  background-color: #f8fbff;
+}
+:is(input, select, textarea):enabled:focus {
+  border-color: #3879ee;
+  outline: 2px solid #3879ee;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px #3879ee1f;
+}
+.menu-search:hover,
+.date-range > div:hover {
+  border-color: #91b5ef;
+  background-color: #f8fbff;
+}
+.menu-search:focus-within,
+.date-range > div:focus-within {
+  color: #245db8;
+  border-color: #3879ee;
+  box-shadow: 0 0 0 3px #3879ee26;
+}
+.menu-search input:enabled:is(:hover, :focus),
+.date-range input:enabled:is(:hover, :focus) {
+  background-color: transparent;
+  box-shadow: none;
+}
+.menu-search input:enabled:focus {
+  outline: none;
+}
+.date-range input:enabled:focus {
+  outline: 1px solid #3879ee;
+  outline-offset: 1px;
+}
+.date-range input:enabled:hover::-webkit-calendar-picker-indicator,
+.date-range input:enabled:focus::-webkit-calendar-picker-indicator {
+  opacity: 1;
+  cursor: pointer;
+}
+input[type='checkbox'] {
+  accent-color: #2869d5;
+  cursor: pointer;
+}
+:is(input, select, textarea):disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
 }
 @media (prefers-reduced-motion: reduce) {
   * {

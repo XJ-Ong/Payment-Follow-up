@@ -72,7 +72,14 @@ def test_validation(client, changes):
     assert client.post("/api/invoices", headers={"X-Role": "Finance"}, json=payload() | changes).status_code == 422
 
 def test_health_and_missing(client):
-    assert client.get("/api/health").json() == {"status": "ok"}
+    health = client.get("/api/health")
+    assert health.json() == {"status": "ok"}
+    assert health.headers["content-security-policy"] == "default-src 'none'; frame-ancestors 'none'; base-uri 'none'"
+    assert health.headers["x-content-type-options"] == "nosniff"
+    assert health.headers["x-frame-options"] == "DENY"
+    assert health.headers["referrer-policy"] == "no-referrer"
+    assert health.headers["permissions-policy"] == "camera=(), geolocation=(), microphone=()"
+    assert "strict-transport-security" not in health.headers
     assert client.post(f"/api/invoices/{uuid4()}/payments", headers={"X-Role": "Finance"}, json={"amount": "1", "received_date": "2026-10-23"}).status_code == 404
 
 def test_existing_baseline(database):
