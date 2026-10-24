@@ -24,7 +24,12 @@ export default function AddInvoiceDialog({
     const id = String(data.get('id')).trim();
     const total = Number(data.get('total'));
     const payments = Number(data.get('payments'));
+    const issue = String(data.get('issue'));
     const due = String(data.get('due'));
+    if (!issue || !due || due < issue) {
+      setError('Due date must be on or after the issue date.');
+      return;
+    }
     const validationError = validateInvoice({ id, total, payments, due }, invoices);
     if (validationError) return setError(validationError);
     setSaving(true);
@@ -38,7 +43,7 @@ export default function AddInvoiceDialog({
           due,
           status: 'Not started',
         },
-        String(data.get('issue')),
+        issue,
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to save invoice');

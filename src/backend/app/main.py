@@ -26,7 +26,7 @@ from .followup_schemas import WorkspaceView, RuleView, SettingsSaveView
 from .settings_schemas import ProfileInput, ProfileView, RulesInput
 from .services import settings
 from .services import invoices as invoice_ops, csv_import
-from .services.invoices import InvoiceInput, PaymentInput
+from .services.invoices import InvoiceInput, PaymentInput, VoidInput
 from .csv_schemas import CsvInput, CsvPreview, CsvImportResult, CsvClientReference
 from .services.followups import ConfigurationError, lock_rule, refresh_workspace, read_workspace
 
@@ -124,6 +124,17 @@ def record_payment(invoice_id: UUID, data: PaymentInput, db: DB, role: Role):
     if invoice is None:
         raise HTTPException(404, "Invoice not found")
     invoice_ops.add_payment(db,COMPANY,invoice,data,role)
+    refresh_workspace(db, COMPANY, adapter, role.id)
+    commit(db)
+    return serialize(db, invoice)
+
+@app.post("/api/invoices/{invoice_id}/void")
+def void_invoice(invoice_id: UUID, data: VoidInput, db: DB, role: Role):
+    lock_rule(db, COMPANY)
+    invoice = db.scalar(select(Invoice).where(Invoice.id == invoice_id, Invoice.company_id == COMPANY).with_for_update())
+    if invoice is None:
+        raise HTTPException(404, "Invoice not found")
+    invoice_ops.void(db,COMPANY,invoice,data,role)
     refresh_workspace(db, COMPANY, adapter, role.id)
     commit(db)
     return serialize(db, invoice)

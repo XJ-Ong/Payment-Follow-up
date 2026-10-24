@@ -48,6 +48,7 @@ export type Invoice = {
   customerId: string;
   total: number;
   payments: number;
+  issueDate?: string;
   due: string;
   status: Status;
   preparedBy?: string;

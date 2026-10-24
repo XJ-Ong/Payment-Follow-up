@@ -1,5 +1,5 @@
 """Shared invoice validation and transactional writes; callers own commit/refresh."""
-from datetime import date
+from datetime import date, datetime, timezone
 from decimal import Decimal
 from typing import Annotated, Literal
 from uuid import UUID, uuid4
@@ -7,6 +7,7 @@ from fastapi import HTTPException
 from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import func, select
 from ..db.models import Invoice, PaymentRecord, ActivityLog
+from .scoring import malaysia_date
 
 Money = Annotated[Decimal, Field(gt=0, max_digits=12, decimal_places=2)]
 
@@ -34,6 +35,16 @@ class PaymentInput(BaseModel):
     payment_type: Literal['deposit','partial','full'] = 'partial'
     reference_number: str | None = Field(default=None, max_length=100)
 
+class VoidInput(BaseModel):
+    reason: str = Field(min_length=3, max_length=500, pattern=r'.*\S.*')
+
+    @model_validator(mode='after')
+    def strip_reason(self):
+        self.reason = self.reason.strip()
+        if len(self.reason) < 3:
+            raise ValueError('Reason must be at least 3 characters')
+        return self
+
 def paid(db, company, invoice):
     return db.scalar(select(func.coalesce(func.sum(PaymentRecord.amount),0)).where(PaymentRecord.invoice_id == invoice.id, PaymentRecord.company_id == company))
 
@@ -46,14 +57,33 @@ def audit(db, company, actor, action, invoice):
 
 def add_payment(db, company, invoice, data, actor):
     balance = invoice.total_amount - paid(db,company,invoice)
-    if invoice.status == 'void' or data.amount > balance:
-        raise HTTPException(422,'Payment exceeds outstanding balance or invoice is void')
+    today = malaysia_date(datetime.now(timezone.utc))
+    if invoice.status == 'void':
+        raise HTTPException(422,'Void invoices cannot accept payments')
+    if invoice.status == 'paid' or balance <= 0:
+        raise HTTPException(422,'Invoice is already fully paid')
+    if data.received_date < invoice.issue_date:
+        raise HTTPException(422,'Payment date cannot be before the invoice issue date')
+    if data.received_date > today:
+        raise HTTPException(422,'Payment date cannot be in the future')
+    if data.amount > balance:
+        raise HTTPException(422,'Payment cannot exceed the outstanding balance')
     if data.payment_type == 'full' and data.amount != balance:
         raise HTTPException(422,'Full payment must equal outstanding balance')
     db.add(PaymentRecord(id=uuid4(),company_id=company,invoice_id=invoice.id,amount=data.amount,received_date=data.received_date,payment_type=data.payment_type,reference_number=data.reference_number,recorded_by=actor.id))
     invoice.status = 'paid' if data.amount == balance else 'partially_paid'
     db.flush()
     audit(db,company,actor,'payment.recorded',invoice)
+
+def void(db, company, invoice, data, actor):
+    """Final cancellation. Only invoices with no recorded payments can be voided."""
+    if invoice.status == 'void':
+        raise HTTPException(409,'Invoice is already void')
+    if paid(db,company,invoice) > 0:
+        raise HTTPException(422,'Invoices with recorded payments cannot be voided')
+    invoice.status = 'void'
+    db.flush()
+    db.add(ActivityLog(id=uuid4(),company_id=company,actor_type='user',actor_id=actor.id,action='invoice.voided',entity_type='invoice',entity_id=invoice.id,after_state={**serialize(db,company,invoice),'reason':data.reason}))
 
 def create(db, company, adapter, actor, data, source='manual'):
     try:

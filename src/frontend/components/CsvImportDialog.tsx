@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { AlertCircle, CheckCircle2, FileWarning } from 'lucide-react';
 import { ApiError, csvTemplate, csvReferences, previewCsv } from '../api';
 import type { CsvPreview, CsvReference } from '../csvTypes';
 import type { Role } from '../model';
@@ -173,6 +174,12 @@ export default function CsvImportDialog({
               />
             </label>
             {filename && <p>Selected file: {filename}</p>}
+            {text && !preview && (
+              <p className="csv-preview-needed" role="status">
+                This CSV has not been validated yet. Click <strong>Preview CSV</strong>{' '}
+                to check the file and see any errors before importing.
+              </p>
+            )}
             <button
               className="button"
               disabled={busy || !text}
@@ -184,18 +191,46 @@ export default function CsvImportDialog({
             </button>
             {preview && (
               <section aria-label="CSV preview">
-                <h3>
-                  Preview: {preview.valid_count} valid, {preview.invalid_count} invalid
-                </h3>
-                {preview.file_errors.map((message, index) => (
-                  <p key={index} role="alert">
-                    {message}
-                  </p>
-                ))}
+                <div
+                  className={`csv-validation-summary ${preview.can_import ? 'is-valid' : 'has-errors'}`}
+                  role={preview.can_import ? 'status' : 'alert'}
+                  aria-live="polite"
+                >
+                  {preview.can_import ? (
+                    <CheckCircle2 size={20} aria-hidden="true" />
+                  ) : (
+                    <AlertCircle size={20} aria-hidden="true" />
+                  )}
+                  <div>
+                    <strong>
+                      {preview.can_import
+                        ? `Ready to import ${preview.valid_count} invoice${preview.valid_count === 1 ? '' : 's'}.`
+                        : 'This CSV cannot be imported yet.'}
+                    </strong>
+                    <p>
+                      {preview.invalid_count > 0
+                        ? `${preview.invalid_count} row${preview.invalid_count === 1 ? '' : 's'} need${preview.invalid_count === 1 ? 's' : ''} attention. Nothing has been saved.`
+                        : 'All rows passed validation.'}
+                    </p>
+                  </div>
+                </div>
+                {preview.file_errors.length > 0 && (
+                  <div className="csv-file-errors" role="alert">
+                    <div className="csv-error-heading">
+                      <FileWarning size={17} aria-hidden="true" />
+                      <strong>File-level errors</strong>
+                    </div>
+                    <ul>
+                      {preview.file_errors.map((message, index) => (
+                        <li key={index}>{message}</li>
+                      ))}
+                    </ul>
+                    <p>Download the template or correct the column headers, then preview the file again.</p>
+                  </div>
+                )}
                 {!preview.can_import && (
-                  <p role="status">
-                    Nothing has been saved. Fix all errors in the file and upload it
-                    again.
+                  <p className="csv-fix-instruction" role="status">
+                    Fix the highlighted rows below, choose the corrected CSV, and preview it again.
                   </p>
                 )}
                 <p>
@@ -221,7 +256,10 @@ export default function CsvImportDialog({
                     </thead>
                     <tbody>
                       {preview.rows.map((row) => (
-                        <tr key={row.row_number}>
+                        <tr
+                          key={row.row_number}
+                          className={row.errors.length ? 'csv-invalid-row' : undefined}
+                        >
                           <td>{row.row_number}</td>
                           <td>
                             <strong>{row.values.invoice_no || '(missing)'}</strong>
@@ -245,7 +283,7 @@ export default function CsvImportDialog({
                           </td>
                           <td>
                             {row.errors.length ? (
-                              <ul>
+                              <ul className="csv-row-errors">
                                 {row.errors.map((e, index) => (
                                   <li key={index}>
                                     <strong>{e.column}:</strong> {e.message}
@@ -253,7 +291,9 @@ export default function CsvImportDialog({
                                 ))}
                               </ul>
                             ) : (
-                              'Valid'
+                              <span className="csv-valid-row">
+                                <CheckCircle2 size={14} aria-hidden="true" /> Valid
+                              </span>
                             )}
                           </td>
                         </tr>

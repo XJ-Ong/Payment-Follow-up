@@ -1,5 +1,5 @@
-import { useRef } from 'react';
-import { Check, Send } from 'lucide-react';
+import { useMemo, useRef, useState } from 'react';
+import { Check, Search, Send, X } from 'lucide-react';
 import { getInvoiceCustomer, money, outstanding, type Invoice } from '../model';
 import { reminderStatus, type OutboxRecord } from '../workflowTypes';
 import { invoiceStage, nextStep, stages, type FollowupStage } from '../followupStages';
@@ -26,7 +26,30 @@ export default function WorkflowPage({
   onReview: (id: string) => void;
 }) {
   const tabs = useRef<HTMLDivElement>(null);
-  const rows = invoices.filter((i) => invoiceStage(i, asOf) === stage);
+  const [customerFilter, setCustomerFilter] = useState('');
+  const [invoiceFilter, setInvoiceFilter] = useState('');
+  const normalizedCustomer = customerFilter.trim().toLowerCase();
+  const normalizedInvoice = invoiceFilter.trim().toLowerCase();
+  const matchesInvoice = (invoice: Invoice | undefined) =>
+    !!invoice &&
+    (!normalizedCustomer ||
+      getInvoiceCustomer(invoice).name.toLowerCase().includes(normalizedCustomer)) &&
+    (!normalizedInvoice || invoice.id.toLowerCase().includes(normalizedInvoice));
+  const rows = useMemo(
+    () =>
+      invoices.filter(
+        (invoice) => invoiceStage(invoice, asOf) === stage && matchesInvoice(invoice),
+      ),
+    [invoices, asOf, stage, normalizedCustomer, normalizedInvoice],
+  );
+  const sentRows = useMemo(
+    () =>
+      outbox.filter((row) =>
+        matchesInvoice(invoices.find((invoice) => invoice.databaseId === row.invoice_id)),
+      ),
+    [outbox, invoices, normalizedCustomer, normalizedInvoice],
+  );
+  const hasFilters = Boolean(normalizedCustomer || normalizedInvoice);
   const actions = {
     Ready: 'Prepare reminder',
     Drafts: 'Continue draft',
@@ -83,6 +106,45 @@ export default function WorkflowPage({
           </button>
         ))}
       </div>
+      <div className="followup-filters" aria-label="Filter follow-ups">
+        <label>
+          <span>Customer</span>
+          <div className="followup-filter-input">
+            <Search size={15} aria-hidden="true" />
+            <input
+              aria-label="Filter by customer"
+              placeholder="Search customer"
+              value={customerFilter}
+              onChange={(event) => setCustomerFilter(event.target.value)}
+            />
+          </div>
+        </label>
+        <label>
+          <span>Invoice</span>
+          <div className="followup-filter-input">
+            <Search size={15} aria-hidden="true" />
+            <input
+              aria-label="Filter by invoice number"
+              placeholder="Search invoice"
+              value={invoiceFilter}
+              onChange={(event) => setInvoiceFilter(event.target.value)}
+            />
+          </div>
+        </label>
+        {hasFilters && (
+          <button
+            className="button followup-filter-clear"
+            type="button"
+            onClick={() => {
+              setCustomerFilter('');
+              setInvoiceFilter('');
+            }}
+          >
+            <X size={14} />
+            Clear
+          </button>
+        )}
+      </div>
       <div
         role="tabpanel"
         id="followup-stage-panel"
@@ -104,12 +166,14 @@ export default function WorkflowPage({
               Saved delivery receipts. Telegram is real delivery; Email and WhatsApp
               receipts are simulated.
             </p>
-            {!outbox.length && (
+            {!sentRows.length && (
               <div className="followup-empty">
-                No sent reminders yet. Start in Ready, then complete approval and send.
+                {hasFilters
+                  ? 'No sent reminders match these filters.'
+                  : 'No sent reminders yet. Start in Ready, then complete approval and send.'}
               </div>
             )}
-            {outbox.map((row) => {
+            {sentRows.map((row) => {
               const invoice = invoices.find((i) => i.databaseId === row.invoice_id);
               return (
                 <article className="followup-row" key={row.id}>
@@ -202,10 +266,13 @@ export default function WorkflowPage({
           <>
             {!rows.length && (
               <div className="followup-empty">
-                No reminders in {stage.toLowerCase()}.
-                {stage === 'Ready'
-                  ? ' Refresh to check current eligibility. Suppressed invoices remain visible on the dashboard.'
-                  : ' Select another stage to continue a reminder.'}
+                {hasFilters
+                  ? 'No reminders match these filters.'
+                  : `No reminders in ${stage.toLowerCase()}. ${
+                      stage === 'Ready'
+                        ? 'Refresh to check current eligibility. Suppressed invoices remain visible on the dashboard.'
+                        : 'Select another stage to continue a reminder.'
+                    }`}
               </div>
             )}
             {rows.map((invoice) => (

@@ -9,6 +9,7 @@ import {
   loadWorkspace,
   createInvoice,
   recordPayment,
+  voidInvoice,
   changeDraft,
   importCsv,
   saveRules,
@@ -43,6 +44,7 @@ import { addTestData } from './testData';
 import AddInvoiceDialog from './components/AddInvoiceDialog';
 import AppLayout from './components/AppLayout';
 import ReviewDrawer from './components/ReviewDrawer';
+import InvoiceActionCard from './components/InvoiceActionCard';
 import Toast from './components/Toast';
 import type { AttentionItem } from './components/Header';
 import WorkflowPage from './pages/WorkflowPage';
@@ -83,6 +85,7 @@ export default function App() {
   const [importing, setImporting] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
+  const [cardId, setCardId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [seeding, setSeeding] = useState(false);
   const seedRunning = useRef(false);
@@ -142,6 +145,7 @@ export default function App() {
     getInvoiceScope(active, !demoMode),
   );
   const current = invoices.find((invoice) => invoice.id === selected);
+  const cardInvoice = invoices.find((invoice) => invoice.id === cardId);
 
   function navigate(page: Page) {
     if (
@@ -171,6 +175,7 @@ export default function App() {
     setUserId(undefined);
     setRole(nextRole);
     setSelected(null);
+    setCardId(null);
     setEditingCustomer(null);
     setAdding(false);
     setImporting(false);
@@ -214,6 +219,47 @@ export default function App() {
     if (identity !== identityGeneration.current) return;
     await refresh();
     record(`${current.id}: payment recorded.`, false);
+  }
+
+  async function cardPayment(
+    invoice: Invoice,
+    amount: string,
+    receivedDate: string,
+    reference: string,
+  ) {
+    const identity = identityGeneration.current;
+    if (demoMode) {
+      setInvoices((previous) =>
+        previous.map((existing) =>
+          existing.id === invoice.id
+            ? { ...existing, payments: existing.payments + Number(amount) }
+            : existing,
+        ),
+      );
+      record(`${invoice.id}: payment of MYR ${Number(amount).toFixed(2)} recorded.`);
+      return;
+    }
+    await recordPayment(invoice, role, amount, receivedDate, userId, reference);
+    if (identity !== identityGeneration.current) return;
+    await refresh();
+    record(`${invoice.id}: payment recorded.`);
+  }
+
+  async function cardVoid(invoice: Invoice, reason: string) {
+    const identity = identityGeneration.current;
+    if (demoMode) {
+      setInvoices((previous) =>
+        previous.map((existing) =>
+          existing.id === invoice.id ? { ...existing, financialStatus: 'void' } : existing,
+        ),
+      );
+      record(`${invoice.id}: invoice voided (${reason}).`);
+      return;
+    }
+    await voidInvoice(invoice, role, reason, userId);
+    if (identity !== identityGeneration.current) return;
+    await refresh();
+    record(`${invoice.id}: invoice voided.`);
   }
 
   async function workflowAction(action: DraftAction, payload: DraftPayload) {
@@ -294,14 +340,20 @@ export default function App() {
         setError(false);
         navigate('Invoices & Payments');
       }
-    } catch {
+    } catch (err) {
       if (
         identity === identityGeneration.current &&
         generation === requestGeneration.current
       ) {
         setError(true);
         toast.warning(
-          'Invoices were imported, but the workspace could not reload. Retry refresh to display the saved records.',
+          `Invoices were imported, but the workspace could not reload${
+            err instanceof Error ? `: ${err.message}` : '.'
+          } Your records are safe; retry refresh to display them.`,
+          {
+            action: { label: 'Retry refresh', onClick: retryConnection },
+            duration: 10000,
+          },
         );
       }
     }
@@ -347,6 +399,7 @@ export default function App() {
     requestGeneration.current += 1;
     setUserId(nextId);
     setSelected(null);
+    setCardId(null);
     setEditingCustomer(null);
     setAdding(false);
     setImporting(false);
@@ -531,7 +584,7 @@ export default function App() {
             onApply={() => setApplied({ ...filters })}
             onReset={resetFilters}
             onAdd={() => setAdding(true)}
-            onReview={setSelected}
+            onReview={active === 'Invoices & Payments' ? setCardId : setSelected}
             onRetry={retryConnection}
             error={error}
             loading={loading}
@@ -659,6 +712,23 @@ export default function App() {
               invoices={invoices}
               onClose={() => setAdding(false)}
               onAdd={addInvoice}
+            />
+          )}
+          {cardInvoice && role !== 'Other Staff' && (
+            <InvoiceActionCard
+              key={cardInvoice.id}
+              invoice={cardInvoice}
+              graceDays={getGraceDays(cardInvoice, graceOverrides)}
+              role={role}
+              onClose={() => setCardId(null)}
+              onPayment={(amount, date, reference) =>
+                cardPayment(cardInvoice, amount, date, reference)
+              }
+              onVoid={(reason) => cardVoid(cardInvoice, reason)}
+              onReview={() => {
+                setCardId(null);
+                setSelected(cardInvoice.id);
+              }}
             />
           )}
           {current && role !== 'Other Staff' && (

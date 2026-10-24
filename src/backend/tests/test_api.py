@@ -97,6 +97,38 @@ def test_tenant_isolation(client, database):
     headers = {"X-Role": "Owner"}
     assert all(row["id"] != str(other_id) for row in client.get("/api/invoices", headers=headers).json()["invoices"])
     assert client.post(f"/api/invoices/{other_id}/payments", headers=headers, json={"amount": "1", "received_date": "2026-10-23"}).status_code == 404
+    assert client.post(f"/api/invoices/{other_id}/void", headers=headers, json={"reason": "Duplicate bill"}).status_code == 404
+
+
+@pytest.mark.parametrize("role", ["Owner", "Finance"])
+def test_void_journey(client, database, role):
+    from app.db.models import ActivityLog
+    from sqlalchemy import select
+    headers = {"X-Role": role}
+    invoice = client.post("/api/invoices", headers=headers, json=payload() | {"initial_payment": "0.00"}).json()
+    path = f'/api/invoices/{invoice["id"]}/void'
+    assert client.post(path, headers={"X-Role": "Other Staff"}, json={"reason": "Duplicate bill"}).status_code == 403
+    for reason in ["", "   ", "ab", "x" * 501]:
+        assert client.post(path, headers=headers, json={"reason": reason}).status_code == 422
+    response = client.post(path, headers=headers, json={"reason": "  Duplicate bill  "})
+    assert response.status_code == 200, response.text
+    assert response.json()["status"] == "void"
+    assert client.post(path, headers=headers, json={"reason": "Again"}).status_code == 409
+    assert client.post(f'/api/invoices/{invoice["id"]}/payments', headers=headers, json={"amount": "1", "received_date": "2026-10-23"}).status_code == 422
+    engine, _ = database
+    with Session(engine) as session:
+        log = session.scalars(select(ActivityLog).where(ActivityLog.action == "invoice.voided", ActivityLog.entity_id == invoice["id"])).one()
+        assert log.after_state["reason"] == "Duplicate bill"
+        assert log.after_state["status"] == "void"
+    assert client.post(f"/api/invoices/{uuid4()}/void", headers=headers, json={"reason": "Duplicate bill"}).status_code == 404
+
+
+def test_void_rejects_invoice_with_payments(client):
+    headers = {"X-Role": "Finance"}
+    invoice = client.post("/api/invoices", headers=headers, json=payload()).json()
+    response = client.post(f'/api/invoices/{invoice["id"]}/void', headers=headers, json={"reason": "Duplicate bill"})
+    assert response.status_code == 422
+    assert "payments" in response.json()["detail"]
 
 
 @pytest.mark.skipif(not __import__('os').environ.get("RUN_BROWSER_TESTS"), reason="Set RUN_BROWSER_TESTS=1 for browser integration")

@@ -34,15 +34,23 @@ export async function request<T>(
   userId?: string,
   responseType: 'json' | 'text' = 'json',
 ): Promise<T> {
-  const response = await fetch(`${baseUrl}/api${path}`, {
-    method: body === undefined ? 'GET' : 'POST',
-    headers: {
-      'X-Role': role,
-      ...(userId ? { 'X-User-ID': userId } : {}),
-      ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
-    },
-    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${baseUrl}/api${path}`, {
+      method: body === undefined ? 'GET' : 'POST',
+      headers: {
+        'X-Role': role,
+        ...(userId ? { 'X-User-ID': userId } : {}),
+        ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
+      },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    });
+  } catch {
+    throw new ApiError(
+      'Unable to connect to the server. Check that the API is running and try again.',
+      0,
+    );
+  }
   if (!response.ok) {
     const payload = await response.json().catch(() => null);
     throw new ApiError(
@@ -87,6 +95,7 @@ type ApiInvoice = {
   id: string;
   invoice_no: string;
   client_id: string;
+  issue_date: string;
   due_date: string;
   total_amount: string;
   payments: string;
@@ -140,6 +149,7 @@ export async function loadWorkspace(
         customer: data.customers.find((c) => c.id === row.client_id),
         total: Number(row.total_amount),
         payments: Number(row.payments),
+        issueDate: row.issue_date,
         due: row.due_date,
         status: 'Not started',
         asOf: data.as_of_date,
@@ -176,6 +186,7 @@ export function recordPayment(
   amount: string,
   receivedDate: string,
   userId?: string,
+  reference?: string,
 ) {
   return request(
     `/invoices/${invoice.databaseId}/payments`,
@@ -184,9 +195,14 @@ export function recordPayment(
       amount,
       received_date: receivedDate,
       payment_type: 'partial',
+      ...(reference?.trim() ? { reference_number: reference.trim() } : {}),
     },
     userId,
   );
+}
+
+export function voidInvoice(invoice: Invoice, role: Role, reason: string, userId?: string) {
+  return request(`/invoices/${invoice.databaseId}/void`, role, { reason }, userId);
 }
 
 export function changeDraft(
