@@ -24,7 +24,7 @@ def seed_reference(engine):
             values.update(backup_approver_id=external_uuid("USR-05"),owner_approver_id=external_uuid("USR-01"))
         db.execute(insert(FollowupRule.__table__).values(**values))
         for row in CLIENT_PROFILES:
-            db.add(ClientFollowupProfile(client_id=external_uuid(row["client_id"]), company_id=COMPANY, relationship_tier=row["tier"].title(), preferred_channel={"email": "Email", "whatsapp": "WhatsApp"}[row["preferred_channel"]], language={"en": "English", "bm": "Bahasa Malaysia"}[row["language"]], tone=row["tone"].title(), do_not_contact=row["do_not_contact"]))
+            db.execute(insert(ClientFollowupProfile.__table__).values(client_id=external_uuid(row["client_id"]), company_id=COMPANY, relationship_tier=row["tier"].title(), preferred_channel={"email": "Email", "whatsapp": "WhatsApp"}[row["preferred_channel"]], language={"en": "English", "bm": "Bahasa Malaysia"}[row["language"]], tone=row["tone"].title(), do_not_contact=row["do_not_contact"]))
         db.commit()
 
 

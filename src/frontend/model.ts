@@ -1,3 +1,4 @@
+import type { Profile } from './settingsTypes';
 import type { Workflow } from './workflowTypes';
 export const REFERENCE_DATE = '2026-10-22';
 export type Role = 'Owner' | 'Finance' | 'Other Staff';
@@ -13,6 +14,7 @@ export type Status =
   | 'Snoozed'
   | 'Not started';
 export type Customer = {
+  profile?: Profile | null;
   id: string;
   name: string;
   contact: string;

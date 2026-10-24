@@ -21,7 +21,9 @@ from .orbyte.mock import MockOrbyteAdapter
 from .orbyte.schemas import AppUser
 from .workflow_schemas import DraftMutation, DraftView, OutboxView, ActivityView, WorkflowView
 from .services import workflow
-from .followup_schemas import WorkspaceView
+from .followup_schemas import WorkspaceView, RuleView, SettingsSaveView
+from .settings_schemas import ProfileInput, ProfileView, RulesInput
+from .services import settings
 from .services.followups import ConfigurationError, lock_rule, refresh_workspace, read_workspace
 
 app = FastAPI(title="Payment Follow-up")
@@ -276,3 +278,32 @@ def timeline(invoice_id: UUID, db: DB, role: Role):
     if db.scalar(select(Invoice.id).where(Invoice.company_id == COMPANY,Invoice.id == invoice_id)) is None:
         raise HTTPException(404,"Invoice not found")
     return activity_rows(db,role,invoice_id)
+
+
+@app.get('/api/customers/{client_id}/profile', response_model=ProfileView)
+def read_customer_profile(client_id: UUID, db: DB, role: Role):
+    rule = lock_rule(db,COMPANY)
+    profile, client = settings.get_profile(db,COMPANY,adapter,client_id)
+    return settings.profile_view(profile,client,rule)
+
+@app.get('/api/settings/rules', response_model=RuleView)
+def read_rules(db: DB, role: Role):
+    return settings.rule_view(lock_rule(db,COMPANY))
+
+def save_configuration(db, role, data, client_id=None):
+    try:
+        workspace, invalidated = settings.save_settings(db,COMPANY,adapter,role,data,client_id)
+        result = SettingsSaveView(workspace=personalize(db,workspace,role),invalidated_journeys=invalidated)
+        commit(db)
+        return result
+    except Exception:
+        db.rollback()
+        raise
+
+@app.post('/api/customers/{client_id}/profile', response_model=SettingsSaveView)
+def save_customer_profile(client_id: UUID, data: ProfileInput, db: DB, role: Role):
+    return save_configuration(db,role,data,client_id)
+
+@app.post('/api/settings/rules', response_model=SettingsSaveView)
+def save_rules(data: RulesInput, db: DB, role: Role):
+    return save_configuration(db,role,data)

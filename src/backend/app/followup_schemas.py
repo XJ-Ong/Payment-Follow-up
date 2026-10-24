@@ -4,8 +4,10 @@ from typing import Literal
 from uuid import UUID
 from pydantic import BaseModel
 from .workflow_schemas import WorkflowView
+from .settings_schemas import ProfileView
 
 class CustomerView(BaseModel):
+    profile: ProfileView | None = None
     id: UUID
     name: str
     contact: str
@@ -15,6 +17,7 @@ class CustomerView(BaseModel):
     doNotContact: bool
 
 class RuleView(BaseModel):
+    revision: int = 1
     grace_days_by_tier: dict[str, int]
     alert_threshold: str
     safety_flag_days: int
@@ -83,3 +86,7 @@ class WorkspaceView(BaseModel):
     dashboard: DashboardView
     queue_ids: list[UUID]
     alerts: list[AlertView]
+
+class SettingsSaveView(BaseModel):
+    workspace: WorkspaceView
+    invalidated_journeys: int

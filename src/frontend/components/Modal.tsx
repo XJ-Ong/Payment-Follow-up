@@ -15,6 +15,8 @@ export default function Modal({
   drawer?: boolean;
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  const close = useRef(onClose);
+  close.current = onClose;
   useEffect(() => {
     const previous =
       document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -28,7 +30,7 @@ export default function Modal({
       ).filter((x) => !x.hasAttribute('disabled') && x.getClientRects().length > 0);
     items()[0]?.focus();
     const key = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') close.current();
       if (e.key === 'Tab') {
         const all = items();
         const first = all[0];
@@ -48,7 +50,7 @@ export default function Modal({
       document.body.style.overflow = overflow;
       previous?.focus();
     };
-  }, [onClose]);
+  }, []);
   return (
     <div
       className={`overlay ${drawer ? 'drawer-overlay' : ''}`}

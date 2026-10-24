@@ -1,18 +1,13 @@
-import type { SavedRules } from '../api';
 import { Settings2 } from 'lucide-react';
 import { type Customer, type GraceOverrides } from '../model';
 
 export default function SettingsPage({
-  readOnly = false,
-  savedRules,
   customers,
   graceOverrides,
   failRefresh,
   onGraceChange,
   onFailRefreshChange,
 }: {
-  readOnly?: boolean;
-  savedRules?: SavedRules | null;
   customers: Customer[];
   graceOverrides: GraceOverrides;
   failRefresh: boolean;
@@ -33,23 +28,6 @@ export default function SettingsPage({
         Finance may approve submitted reminders. Owner and Finance may create and submit
         drafts.
       </div>
-      {readOnly && (
-        <div className="rule-note">
-          <p>Saved rules are read-only in this milestone.</p>
-          <p>
-            Reminders require Finance approval. Outstanding balances above MYR{' '}
-            {savedRules?.second_approval_amount ?? 'not loaded'} also require a distinct
-            Owner approval. Backup Finance covers Finance leave; high-value reminders wait
-            while Owner is on leave.
-          </p>
-          <p>
-            Alert threshold: {savedRules?.alert_threshold ?? 'Not loaded'} RM-days; Safety
-            rule: {savedRules?.safety_flag_days ?? 'Not loaded'} days; Reminder spacing:{' '}
-            {savedRules?.min_spacing_days ?? 'Not loaded'} days per invoice; Exclude
-            public holidays: {savedRules?.skip_holidays ? 'On' : 'Off'} (weekends count).
-          </p>
-        </div>
-      )}
       {customers.map((c) => (
         <div className="rule-row" key={c.id}>
           <span>
@@ -63,7 +41,6 @@ export default function SettingsPage({
           <label>
             Grace days
             <input
-              readOnly={readOnly}
               type="number"
               min="0"
               max="365"
@@ -81,11 +58,7 @@ export default function SettingsPage({
         />
         Simulate an error on the next refresh
       </label>
-      <p className="muted">
-        {readOnly
-          ? 'API mode uses saved rules and backend calculations in Malaysia time. Reminder approvals are a later milestone.'
-          : 'Rule edits are a local demo preview and reset on reload.'}
-      </p>
+      <p className="muted">Rule edits are a local demo preview and reset on reload.</p>
     </section>
   );
 }

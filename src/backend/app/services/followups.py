@@ -67,7 +67,7 @@ def refresh_workspace(db: Session, company: UUID, adapter: OrbyteAdapter,
     last_sent = dict(db.execute(select(ReminderDraft.invoice_id, func.max(SendLog.sent_at)).join(SendLog, SendLog.draft_id == ReminderDraft.id).where(ReminderDraft.company_id == company, SendLog.company_id == company, SendLog.status == "simulated").group_by(ReminderDraft.invoice_id)).all())
     earliest = min((invoice.due_date for invoice, _ in rows), default=as_of)
     holidays = tuple(h.date for h in adapter.list_public_holidays(company, earliest, as_of)) if rule.skip_holidays and earliest <= as_of else ()
-    rules = dict(grace_days_by_tier=rule.grace_days_by_tier, alert_threshold=f"{rule.alert_threshold:.2f}", safety_flag_days=rule.safety_flag_days, min_spacing_days=rule.min_spacing_days, skip_holidays=rule.skip_holidays, primary_approver_id=str(rule.primary_approver_id), backup_approver_id=str(rule.backup_approver_id) if rule.backup_approver_id else None, owner_approver_id=str(rule.owner_approver_id) if rule.owner_approver_id else None, second_approval_amount=f"{rule.second_approval_amount:.2f}")
+    rules = dict(revision=rule.revision, grace_days_by_tier=rule.grace_days_by_tier, alert_threshold=f"{rule.alert_threshold:.2f}", safety_flag_days=rule.safety_flag_days, min_spacing_days=rule.min_spacing_days, skip_holidays=rule.skip_holidays, primary_approver_id=str(rule.primary_approver_id), backup_approver_id=str(rule.backup_approver_id) if rule.backup_approver_id else None, owner_approver_id=str(rule.owner_approver_id) if rule.owner_approver_id else None, second_approval_amount=f"{rule.second_approval_amount:.2f}")
     calculations = {}
     for invoice, payments in rows:
         if invoice.client_id not in clients or invoice.client_id not in profiles:
@@ -144,10 +144,11 @@ def refresh_workspace(db: Session, company: UUID, adapter: OrbyteAdapter,
         snapshot = snapshot_history.get(a.snapshot_id)
         if snapshot is not None and snapshot.as_of_date == as_of and snapshot.eligible and a.channel == "dashboard" and a.recipient_id == rule.primary_approver_id:
             alert_views.append(dict(id=str(a.id), invoice_id=str(snapshot.invoice_id), snapshot_id=str(snapshot.id), recipient_id=str(a.recipient_id), trigger_type=a.trigger_type, status=a.status, reason=snapshot.reason))
+    from .settings import profile_view
     customers = []
     for client in clients.values():
         p = profiles[client.id]
-        customers.append(dict(id=str(client.id), name=client.name, contact=client.email or client.phone or "", initials="".join(n[0] for n in client.name.split()[:2]), color="blue", graceDays=rule.grace_days_by_tier[p.relationship_tier], doNotContact=p.do_not_contact))
+        customers.append(dict(profile=profile_view(p,client,rule).model_dump(mode="json"), id=str(client.id), name=client.name, contact=client.email or client.phone or "", initials="".join(n[0] for n in client.name.split()[:2]), color="blue", graceDays=rule.grace_days_by_tier[p.relationship_tier], doNotContact=p.do_not_contact))
     balances = {c: Decimal("0.00") for c in clients}
     total_overdue = Decimal("0.00")
     for invoice, _ in rows:

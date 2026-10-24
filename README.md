@@ -155,7 +155,7 @@ npm install
 npm run dev
 ```
 
-Set `VITE_API_URL=http://localhost:8000` and `VITE_DATA_MODE=api`. Restart Vite after changing environment variables. Backend `CORS_ORIGINS` is a comma-separated list of allowed local frontend origins. For a standalone template preview use `VITE_DATA_MODE=demo`; those template edits are not persisted. API mode saves invoices/payments and uses the current Malaysia date. Saved follow-up rules are read-only in API mode. Scoring, dashboard alerts and queue eligibility are calculated and saved by the backend; saved reminder versions, Finance/Owner approvals and simulated dispatch are now connected; AI and scheduled automation remain future work.
+Set `VITE_API_URL=http://localhost:8000` and `VITE_DATA_MODE=api`. Restart Vite after changing environment variables. Backend `CORS_ORIGINS` is a comma-separated list of allowed local frontend origins. For a standalone template preview use `VITE_DATA_MODE=demo`; those template edits are not persisted. API mode saves invoices/payments and uses the current Malaysia date. Owner can edit saved company rules in API mode; Finance and Owner can edit customer follow-up preferences. Scoring, dashboard alerts and queue eligibility are calculated and saved by the backend; saved reminder versions, Finance/Owner approvals and simulated dispatch are now connected; AI and scheduled automation remain future work.
 
 ### Production security headers
 
@@ -232,7 +232,7 @@ npm install
 npm run dev
 ```
 
-Set `VITE_API_URL=http://localhost:8000` and `VITE_DATA_MODE=api`. Restart Vite after changing environment variables. Backend `CORS_ORIGINS` is a comma-separated list of allowed local frontend origins. For a standalone template preview use `VITE_DATA_MODE=demo`; those template edits are not persisted. API mode saves invoices/payments and uses the current Malaysia date. Saved follow-up rules are read-only in API mode. Scoring, dashboard alerts and queue eligibility are calculated and saved by the backend; saved reminder versions, Finance/Owner approvals and simulated dispatch are now connected; AI and scheduled automation remain future work.
+Set `VITE_API_URL=http://localhost:8000` and `VITE_DATA_MODE=api`. Restart Vite after changing environment variables. Backend `CORS_ORIGINS` is a comma-separated list of allowed local frontend origins. For a standalone template preview use `VITE_DATA_MODE=demo`; those template edits are not persisted. API mode saves invoices/payments and uses the current Malaysia date. Owner can edit saved company rules in API mode; Finance and Owner can edit customer follow-up preferences. Scoring, dashboard alerts and queue eligibility are calculated and saved by the backend; saved reminder versions, Finance/Owner approvals and simulated dispatch are now connected; AI and scheduled automation remain future work.
 
 ### API contract
 
@@ -282,8 +282,8 @@ Module Progress
 ✅ Simulated roles - Preparer removed
 ✅ Dashboard
 ✅ Priority scoring & daily queue
-🟡 Customer profiles
-🟡 Rules & settings
+✅ Customer profiles
+✅ Rules & settings
 ✅ Reminder drafts
 ✅ Approve, skip & snooze
 ✅ Activity log
@@ -304,7 +304,7 @@ Run `uv run alembic upgrade head` from `src/backend` before starting the API. Re
 
 Revision `0004` adds an explicit latest-workspace event pointer, updated under the same company lock. Saved readback follows transaction order even when refresh timestamps are identical; older records remain unchanged.
 
-The known synthetic default routing is migrated to primary Finance **Encik Razak**, backup Finance **Puan Nadia**, and Owner **Puan Farah**. Other routing configurations are preserved; custom companies must configure distinct company-scoped Finance/backup Finance/Owner users before using the workflow. Rules remain read-only in the current UI.
+The known synthetic default routing is migrated to primary Finance **Encik Razak**, backup Finance **Puan Nadia**, and Owner **Puan Farah**. Other routing configurations are preserved; custom companies must configure distinct company-scoped Finance/backup Finance/Owner users before using the workflow. Approver assignments remain read-only; Owner can edit calculation and approval thresholds in Rules & Settings.
 
 ### Policy and lifecycle
 
@@ -388,3 +388,20 @@ The reminder stays open after each transition. Closing returns to its current st
 UX verification: 75 backend regression tests passed (browser wrapper skipped in the default run), 9 frontend unit tests passed, 7 API browser journeys passed, 4 standalone demo browser tests passed, and the production build and changed-file formatting checks passed. Browser coverage includes sent receipts/history, stage transitions, Finance/Owner approval, leave routing, payment invalidation, skip/snooze across reload, failed-save text retention, keyboard tabs and mobile containment.
 
 Temporary testing helper: when running the Vite development app in API mode, Owner and Finance can click **Add test data** beside Demo identity. With the seeded defaults this adds seven uniquely prefixed TEST invoices: standard, high value, exact approval threshold, partial payment, paid, future due and do-not-contact. Existing records are kept; every click adds a fresh batch through the ordinary invoice/payment APIs. Dates use the loaded Malaysia reference date and overdue examples account for saved grace/safety rules. The app opens Follow-ups > Ready after adding them; paid/future/blocked examples remain in Invoices & Payments. The helper is hidden from production builds and standalone demo mode. If a request fails partway, the notification reports how many invoices were saved.
+
+
+### Editable customer preferences and company rules
+
+Apply migrations with `cd src/backend` then `.venv\Scripts\python.exe -m alembic upgrade head`. Revision `0005` adds revision counters with default 1 to existing profiles and rules; it does not remove data.
+
+In API mode, **Customer Profiles > Edit preferences** lets Owner and Finance change New/Regular/Key tier, Email/WhatsApp channel, English/Bahasa Malaysia language, Friendly/Neutral/Firm tone and do-not-contact. Names, email and phone remain read-only Orbyte data. Selecting a channel without contact details is rejected. Grace days follow the selected tier's company rule.
+
+**Rules & Settings** lets Owner change the three tier grace values, alert threshold (RM-days), safety days, per-invoice spacing, holiday exclusion and high-value approval threshold. Finance can view rules but cannot save them; approver assignments remain read-only. **Save and recalculate** atomically persists settings, audits before/after values with the selected user, recalculates today's workspace and invalidates affected active reminders. Unsaved form edits do not change calculations. No-op saves do not increase revisions. Skips, snoozes, historical versions, sent receipts and previous-day snapshots are retained.
+
+Profile and rules reads use `GET /api/customers/{id}/profile` and `GET /api/settings/rules`; writes use `POST` to the same paths with complete editable fields and the loaded `revision`. Successful writes return `{workspace, invalidated_journeys}`. Stale writes return 409 and offer **Reload saved values** (which replaces local form edits); invalid input returns 422 and unauthorized writes return 403. Thresholds are decimal strings. Updating message preferences invalidates active reminders for that customer; changing high-value policy invalidates versions carrying the old policy. Scoring changes retain approvals while eligibility, facts and approval policy remain valid.
+
+Worked examples: MYR 1,000 outstanding at 40 days overdue scores 40,000 with zero grace, or 33,000 with seven grace days. The seeded 30-day safety rule still allows it into Ready. Setting do-not-contact removes it from Ready without reducing the financial balance. Reducing the high-value threshold from MYR 20,000 to MYR 500 invalidates an approved MYR 1,000 reminder; a new draft requires Finance then a distinct Owner. Exact equality with the threshold still needs Finance only. Public holidays may reduce overdue days when enabled; weekends continue to count.
+
+Standalone demo mode retains local preview behavior. AI drafting and real delivery remain outside this milestone.
+
+Editable-settings verification: 87 backend tests passed (the browser wrapper is skipped in the default suite), plus 9 frontend unit tests, 10 API browser journeys and 4 standalone demo browser tests. Production build, changed-file formatting and schema-drift checks passed. Revision 0005 was applied to the development database while preserving all 29 invoices, 11 payments, 9 draft versions, 8 approvals, 6 simulated sends, 50 snapshots and 10 customer profiles. Browser checks include form cancellation, failed-save retention, stale revision recovery, Finance restrictions, payment/preference invalidation, reload persistence, keyboard focus and mobile layout.

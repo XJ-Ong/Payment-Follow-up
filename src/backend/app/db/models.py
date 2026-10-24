@@ -48,9 +48,11 @@ def _company_id() -> Mapped[UUID]:
 
 # 1
 class FollowupRule(Base):
+    revision: Mapped[int] = mapped_column(Integer, server_default=text("1"))
     __tablename__ = "followup_rule"
     __table_args__ = (
         UniqueConstraint("company_id", name="uq_followup_rule_company_id"),
+        CheckConstraint("revision > 0", name="ck_followup_rule_revision"),
         CheckConstraint("alert_threshold >= 0", name="ck_followup_rule_alert_threshold"),
         CheckConstraint("safety_flag_days > 0", name="ck_followup_rule_safety_flag_days"),
         CheckConstraint("min_spacing_days >= 0", name="ck_followup_rule_min_spacing_days"),
@@ -73,8 +75,10 @@ class FollowupRule(Base):
 
 # 2
 class ClientFollowupProfile(Base):
+    revision: Mapped[int] = mapped_column(Integer, server_default=text("1"))
     __tablename__ = "client_followup_profile"
     __table_args__ = (
+        CheckConstraint("revision > 0", name="ck_client_followup_profile_revision"),
         CheckConstraint("relationship_tier IN ('New', 'Regular', 'Key')", name="ck_cfp_relationship_tier"),
         CheckConstraint("preferred_channel IN ('Email', 'WhatsApp')", name="ck_cfp_preferred_channel"),
         CheckConstraint("language IN ('English', 'Bahasa Malaysia')", name="ck_cfp_language"),

@@ -1,3 +1,6 @@
+import RulesEditor from './pages/RulesEditor';
+import ProfileEditor from './components/ProfileEditor';
+import type { ProfileInput, RulesInput } from './settingsTypes';
 import { useEffect, useState, useRef } from 'react';
 import { toast } from 'sonner';
 import {
@@ -6,6 +9,9 @@ import {
   createInvoice,
   recordPayment,
   changeDraft,
+  saveRules,
+  saveProfile,
+  type SettingsResult,
   type Dashboard,
   type FollowupAlert,
   type SavedRules,
@@ -70,6 +76,7 @@ export default function App() {
   const [filters, setFilters] = useState<Filters>(cleanFilters);
   const [applied, setApplied] = useState<Filters>(cleanFilters);
   const [adding, setAdding] = useState(false);
+  const [editingCustomer, setEditingCustomer] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [seeding, setSeeding] = useState(false);
@@ -159,6 +166,7 @@ export default function App() {
     setUserId(undefined);
     setRole(nextRole);
     setSelected(null);
+    setEditingCustomer(null);
     setAdding(false);
     toast.info(`Demo role changed to ${nextRole}.`, { id: 'role-change' });
   }
@@ -254,11 +262,46 @@ export default function App() {
     }
   }
 
+  async function applySettingsSave(saving: Promise<SettingsResult>, identity: number) {
+    const result = await saving;
+    if (identity !== identityGeneration.current) return result;
+    const generation = ++requestGeneration.current;
+    const workspace = await loadWorkspace(role, false, userId, result.workspace);
+    if (
+      identity === identityGeneration.current &&
+      generation === requestGeneration.current
+    ) {
+      applyWorkspace(workspace);
+      setLoading(false);
+      setError(false);
+      toast.success(
+        `Saved and recalculated. ${result.invalidated_journeys} reminder journeys invalidated.`,
+      );
+    }
+    return result;
+  }
+
+  async function updateRules(input: RulesInput) {
+    const result = await applySettingsSave(
+      saveRules(input, role, userId),
+      identityGeneration.current,
+    );
+    return result.workspace.rules!;
+  }
+
+  async function updateProfile(id: string, input: ProfileInput) {
+    await applySettingsSave(
+      saveProfile(id, input, role, userId),
+      identityGeneration.current,
+    );
+  }
+
   function changeUser(nextId: string) {
     identityGeneration.current += 1;
     requestGeneration.current += 1;
     setUserId(nextId);
     setSelected(null);
+    setEditingCustomer(null);
     setAdding(false);
   }
 
@@ -388,11 +431,19 @@ export default function App() {
       );
     switch (active) {
       case 'Rules & Settings':
+        if (!demoMode)
+          return (
+            <RulesEditor
+              key={`${role}-${userId}`}
+              role={role}
+              userId={userId}
+              users={users}
+              onSave={updateRules}
+            />
+          );
         return (
           <SettingsPage
             customers={customers}
-            savedRules={rules}
-            readOnly={!demoMode}
             graceOverrides={graceOverrides}
             failRefresh={failRefresh}
             onGraceChange={changeGraceDays}
@@ -402,6 +453,7 @@ export default function App() {
       case 'Customer Profiles':
         return (
           <CustomerPage
+            onEdit={!demoMode ? setEditingCustomer : undefined}
             customers={customers}
             balances={balances}
             graceOverrides={graceOverrides}
@@ -463,6 +515,17 @@ export default function App() {
       overlays={
         <>
           <Toast />
+          {editingCustomer && role !== 'Other Staff' && (
+            <ProfileEditor
+              key={`${editingCustomer}-${role}-${userId}`}
+              id={editingCustomer}
+              role={role}
+              userId={userId}
+              rules={rules}
+              onSave={updateProfile}
+              onClose={() => setEditingCustomer(null)}
+            />
+          )}
           {adding && role !== 'Other Staff' && (
             <AddInvoiceDialog
               customers={customers}

@@ -110,10 +110,11 @@ test('backend rankings, exclusions, alerts and payment-driven queue removal', as
     page.locator('.followup-row').filter({ hasText: 'QUEUE-SAFETY' }),
   ).toBeVisible();
   await page.getByRole('button', { name: 'Rules & Settings', exact: true }).click();
+  await page.getByLabel('DEMO ROLE').selectOption('Finance');
   const grace = page.getByRole('spinbutton').first();
   await expect(grace).toHaveAttribute('readonly', '');
   await expect(
-    page.getByText('Saved rules are read-only in this milestone.'),
+    page.getByText('Only Owner can edit company-wide rules.', { exact: false }),
   ).toBeVisible();
 });
 
@@ -490,4 +491,211 @@ test('temporary seed button adds persistent examples without replacing existing 
   expect(
     await page.evaluate(() => document.documentElement.scrollWidth),
   ).toBeLessThanOrEqual(390);
+});
+
+test('customer preferences support cancel, failed saves, conflicts and reminder invalidation', async ({
+  page,
+  request,
+}) => {
+  const headers = { 'X-Role': 'Finance' };
+  const original = await request.get('http://127.0.0.1:8001/api/invoices', { headers });
+  const data = await original.json();
+  const customer = data.customers.find(
+    (c: { name: string }) => c.name === 'Kedai Kopi Harmoni',
+  );
+  const number = `CONFIG-${Date.now()}`;
+  const due = new Date(`${data.as_of_date}T00:00:00Z`);
+  due.setUTCDate(due.getUTCDate() - 60);
+  const created = await request.post('http://127.0.0.1:8001/api/invoices', {
+    headers,
+    data: {
+      invoice_no: number,
+      client_id: customer.id,
+      issue_date: due.toISOString().slice(0, 10),
+      due_date: due.toISOString().slice(0, 10),
+      total_amount: '2000.00',
+    },
+  });
+  expect(created.ok()).toBeTruthy();
+  await page.goto('/');
+  await page.getByLabel('DEMO ROLE').selectOption('Finance');
+  await openInvoice(page, number);
+  await page.getByRole('button', { name: 'Create template draft', exact: true }).click();
+  await page
+    .getByRole('button', { name: 'Submit for Finance approval', exact: true })
+    .click();
+  await page
+    .getByRole('button', { name: 'Approve current version', exact: true })
+    .click();
+  await expect(page.getByRole('dialog')).toContainText('Approved preview');
+  await closeDrawer(page);
+  await page.getByRole('button', { name: 'Customer Profiles', exact: true }).click();
+  const card = page
+    .locator('.customer-profile')
+    .filter({ hasText: 'Kedai Kopi Harmoni' });
+  await card.getByRole('button', { name: 'Edit preferences' }).click();
+  await page.getByLabel('Tone', { exact: true }).focus();
+  await page.getByLabel('Tone', { exact: true }).selectOption('Firm');
+  await expect(page.getByLabel('Tone', { exact: true })).toBeFocused();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.locator('.main-shell')).toHaveCSS('margin-left', '0px');
+  expect(
+    await page
+      .getByRole('dialog')
+      .evaluate(
+        (node) =>
+          node.scrollWidth <= node.clientWidth &&
+          node.getBoundingClientRect().right <= window.innerWidth,
+      ),
+  ).toBe(true);
+  await page.screenshot({
+    path: 'test-results/preferences-mobile.png',
+    fullPage: true,
+    animations: 'disabled',
+  });
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await expect(card).toContainText('Friendly');
+  await card.getByRole('button', { name: 'Edit preferences' }).click();
+  await page.getByLabel('Tone', { exact: true }).selectOption('Firm');
+  await page.route('**/api/customers/*/profile', (route) =>
+    route.request().method() === 'POST'
+      ? route.fulfill({
+          status: 422,
+          contentType: 'application/json',
+          body: JSON.stringify({ detail: 'Injected preference error' }),
+        })
+      : route.continue(),
+  );
+  await page.getByRole('button', { name: 'Save and recalculate', exact: true }).click();
+  await expect(page.getByRole('dialog').getByRole('alert')).toContainText(
+    'Injected preference error',
+  );
+  await expect(page.getByLabel('Tone', { exact: true })).toHaveValue('Firm');
+  await page.unroute('**/api/customers/*/profile');
+  const url = `http://127.0.0.1:8001/api/customers/${customer.id}/profile`;
+  const profile = await (await request.get(url, { headers })).json();
+  const {
+    revision,
+    relationship_tier,
+    preferred_channel,
+    language,
+    tone,
+    do_not_contact,
+  } = profile;
+  const concurrent = await request.post(url, {
+    headers,
+    data: {
+      revision,
+      relationship_tier,
+      preferred_channel,
+      language: 'English',
+      tone,
+      do_not_contact,
+    },
+  });
+  expect(concurrent.ok()).toBeTruthy();
+  await page.getByRole('button', { name: 'Save and recalculate', exact: true }).click();
+  await expect(page.getByRole('dialog').getByRole('alert')).toContainText(
+    'Saved values changed',
+  );
+  await expect(page.getByLabel('Tone', { exact: true })).toHaveValue('Firm');
+  await page.getByRole('button', { name: 'Reload saved values', exact: true }).click();
+  await expect(page.getByLabel('Language', { exact: true })).toHaveValue('English');
+  await page.getByLabel('Tone', { exact: true }).selectOption('Firm');
+  await page.getByRole('button', { name: 'Save and recalculate', exact: true }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(card).toContainText('English / Firm');
+  await page.reload();
+  await openInvoice(page, number);
+  await expect(page.getByRole('dialog')).toContainText('Invalidated');
+  await expect(
+    page.getByRole('button', { name: 'Simulate send', exact: true }),
+  ).toHaveCount(0);
+});
+
+test('Owner rules editing handles conflicts and persists while Finance remains read-only', async ({
+  page,
+  request,
+}) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Rules & Settings', exact: true }).click();
+  const key = page.getByLabel('Key grace days', { exact: true });
+  await expect(key).toHaveValue('14');
+  await key.fill('21');
+  await page.getByRole('button', { name: 'Cancel changes', exact: true }).click();
+  await expect(key).toHaveValue('14');
+  await key.fill('21');
+  await page.route('**/api/settings/rules', (route) =>
+    route.request().method() === 'POST'
+      ? route.fulfill({
+          status: 422,
+          contentType: 'application/json',
+          body: JSON.stringify({ detail: 'Injected rules error' }),
+        })
+      : route.continue(),
+  );
+  await page.getByRole('button', { name: 'Save and recalculate', exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText('Injected rules error');
+  await expect(key).toHaveValue('21');
+  await page.unroute('**/api/settings/rules');
+  const headers = { 'X-Role': 'Owner' };
+  const url = 'http://127.0.0.1:8001/api/settings/rules';
+  const saved = await (await request.get(url, { headers })).json();
+  const {
+    revision,
+    grace_days_by_tier,
+    alert_threshold,
+    min_spacing_days,
+    skip_holidays,
+    second_approval_amount,
+  } = saved;
+  expect(
+    (
+      await request.post(url, {
+        headers,
+        data: {
+          revision,
+          grace_days_by_tier,
+          alert_threshold,
+          safety_flag_days: 31,
+          min_spacing_days,
+          skip_holidays,
+          second_approval_amount,
+        },
+      })
+    ).ok(),
+  ).toBeTruthy();
+  await page.getByRole('button', { name: 'Save and recalculate', exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText('Saved values changed');
+  await expect(key).toHaveValue('21');
+  await page.getByRole('button', { name: 'Reload saved values', exact: true }).click();
+  await expect(key).toHaveValue('14');
+  await expect(page.getByLabel('Safety days', { exact: true })).toHaveValue('31');
+  await key.fill('21');
+  await page.getByRole('button', { name: 'Save and recalculate', exact: true }).click();
+  await expect(
+    page.getByRole('button', { name: 'Save and recalculate', exact: true }),
+  ).toBeDisabled();
+  await page.reload();
+  await page.getByRole('button', { name: 'Rules & Settings', exact: true }).click();
+  await expect(key).toHaveValue('21');
+  await page.getByLabel('DEMO ROLE').selectOption('Finance');
+  await expect(
+    page.getByText('Only Owner can edit company-wide rules.', { exact: false }),
+  ).toBeVisible();
+  await expect(key).toHaveAttribute('readonly', '');
+  await expect(
+    page.getByRole('button', { name: 'Save and recalculate', exact: true }),
+  ).toHaveCount(0);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.locator('.main-shell')).toHaveCSS('margin-left', '0px');
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth),
+  ).toBeLessThanOrEqual(390);
+  await page.screenshot({
+    path: 'test-results/rules-mobile.png',
+    fullPage: true,
+    animations: 'disabled',
+  });
 });

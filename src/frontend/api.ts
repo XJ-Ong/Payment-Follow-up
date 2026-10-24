@@ -1,3 +1,4 @@
+import type { Profile, ProfileInput, RulesInput } from './settingsTypes';
 import type { Customer, Invoice, Role, FollowupCalculation } from './model';
 
 import type {
@@ -15,6 +16,15 @@ const baseUrl = (import.meta.env.VITE_API_URL ?? 'http://localhost:8000').replac
   /\/$/,
   '',
 );
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    public status: number,
+  ) {
+    super(message);
+  }
+}
+
 export async function request<T>(
   path: string,
   role: Role,
@@ -32,15 +42,17 @@ export async function request<T>(
   });
   if (!response.ok) {
     const payload = await response.json().catch(() => null);
-    throw new Error(
+    throw new ApiError(
       typeof payload?.detail === 'string'
         ? payload.detail
         : `Request failed (${response.status}). Check the form and try again.`,
+      response.status,
     );
   }
   return response.json();
 }
 export type SavedRules = {
+  revision: number;
   grace_days_by_tier: Record<string, number>;
   alert_threshold: string;
   safety_flag_days: number;
@@ -78,21 +90,29 @@ type ApiInvoice = {
   workflow?: Workflow;
   calculation: FollowupCalculation;
 };
-export async function loadWorkspace(role: Role, refresh = true, userId?: string) {
-  const data = await request<{
-    invoices: ApiInvoice[];
-    customers: Customer[];
-    as_of_date: string;
-    computed_at: string | null;
-    rules: SavedRules | null;
-    dashboard: Dashboard;
-    alerts: FollowupAlert[];
-  }>(
-    refresh ? '/followups/refresh' : '/followups',
-    role,
-    refresh ? {} : undefined,
-    userId,
-  );
+export type WorkspacePayload = {
+  invoices: ApiInvoice[];
+  customers: Customer[];
+  as_of_date: string;
+  computed_at: string | null;
+  rules: SavedRules | null;
+  dashboard: Dashboard;
+  alerts: FollowupAlert[];
+};
+export async function loadWorkspace(
+  role: Role,
+  refresh = true,
+  userId?: string,
+  saved?: WorkspacePayload,
+) {
+  const data =
+    saved ??
+    (await request<WorkspacePayload>(
+      refresh ? '/followups/refresh' : '/followups',
+      role,
+      refresh ? {} : undefined,
+      userId,
+    ));
   const [users, outbox, activity] = await Promise.all([
     request<DemoUser[]>('/users', role, undefined, userId),
     request<OutboxRecord[]>('/outbox', role, undefined, userId),
@@ -185,4 +205,46 @@ export function changeDraft(
 }
 export function loadVersions(invoiceId: string, role: Role, userId?: string) {
   return request<Draft[]>(`/invoices/${invoiceId}/drafts`, role, undefined, userId);
+}
+
+export type SettingsResult = {
+  workspace: WorkspacePayload;
+  invalidated_journeys: number;
+};
+export const getProfile = (id: string, role: Role, userId?: string) =>
+  request<Profile>(`/customers/${id}/profile`, role, undefined, userId);
+export const saveProfile = (
+  id: string,
+  data: ProfileInput,
+  role: Role,
+  userId?: string,
+) => request<SettingsResult>(`/customers/${id}/profile`, role, data, userId);
+export const getRules = (role: Role, userId?: string) =>
+  request<SavedRules>('/settings/rules', role, undefined, userId);
+export const saveRules = (data: RulesInput, role: Role, userId?: string) =>
+  request<SettingsResult>('/settings/rules', role, data, userId);
+export function rulesInput(r: SavedRules): RulesInput {
+  return {
+    revision: r.revision,
+    grace_days_by_tier: {
+      New: r.grace_days_by_tier.New,
+      Regular: r.grace_days_by_tier.Regular,
+      Key: r.grace_days_by_tier.Key,
+    },
+    alert_threshold: r.alert_threshold,
+    safety_flag_days: r.safety_flag_days,
+    min_spacing_days: r.min_spacing_days,
+    skip_holidays: r.skip_holidays,
+    second_approval_amount: r.second_approval_amount ?? '20000.00',
+  };
+}
+export function profileInput(p: Profile): ProfileInput {
+  return {
+    revision: p.revision,
+    relationship_tier: p.relationship_tier,
+    preferred_channel: p.preferred_channel,
+    language: p.language,
+    tone: p.tone,
+    do_not_contact: p.do_not_contact,
+  };
 }

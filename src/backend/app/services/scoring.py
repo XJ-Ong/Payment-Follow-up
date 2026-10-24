@@ -52,7 +52,9 @@ def calculate(*, total: Decimal, payments: Decimal, due_date: date,
     if do_not_contact:
         reasons.append("Customer is marked do not contact")
     if last_sent_date is not None and (as_of - last_sent_date).days < min_spacing_days:
-        reasons.append(f"Reminder spacing: wait until {date.fromordinal(last_sent_date.toordinal() + min_spacing_days).isoformat()}")
+        next_ordinal = last_sent_date.toordinal() + min_spacing_days
+        reasons.append(f"Reminder spacing: wait until {date.fromordinal(next_ordinal).isoformat()}" if next_ordinal <= date.max.toordinal()
+                       else "Reminder spacing: waiting period exceeds the supported calendar range")
     if trigger is None:
         reasons.append("Below alert threshold and safety-rule age")
     label = {"both": "Threshold and safety rule reached", "threshold": "Alert threshold reached", "safety_rule": "Safety-rule age reached", None: "No alert triggered"}[trigger]

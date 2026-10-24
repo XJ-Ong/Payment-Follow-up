@@ -2580,3 +2580,46 @@ input[type='checkbox'] {
     flex-wrap: wrap;
   }
 }
+
+.config-form {
+  padding: 22px;
+  display: grid;
+  gap: 18px;
+}
+.config-form fieldset {
+  border: 0;
+  padding: 0;
+  min-width: 0;
+  display: grid;
+  gap: 16px;
+}
+.config-form label:not(.check-label) {
+  display: grid;
+  gap: 8px;
+}
+.config-form input:not([type='checkbox']),
+.config-form select {
+  width: 100%;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid #dce4ee;
+  border-radius: 6px;
+  background: #fff;
+}
+.config-form input[readonly] {
+  background: #f5f7fb;
+}
+.config-form .rule-note {
+  margin: 0;
+}
+.config-form .drawer-actions {
+  flex-wrap: wrap;
+}
+.config-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr));
+  gap: 16px;
+}
+.customer-profile > .button {
+  margin: 12px 0;
+}
