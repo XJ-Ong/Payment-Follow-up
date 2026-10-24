@@ -58,11 +58,11 @@ export default function RulesEditor({
   const approver = (id?: string | null) =>
     users.find((u) => u.id === id)?.name ?? id ?? 'Not configured';
   return (
-    <section className="card">
+    <section className="card rules-settings">
       <div className="section-title">
         <div>
           <h2>Follow-up rules</h2>
-          <p>Saved policy used by all invoices in this company.</p>
+          <p>Saved policy for all invoices.</p>
         </div>
       </div>
       <form
@@ -93,11 +93,109 @@ export default function RulesEditor({
         {loading && <p role="status">Loading saved rules…</p>}
         {form && (
           <fieldset disabled={busy || loading}>
-            <h3>Grace days by relationship tier</h3>
-            <div className="config-grid">
-              {(['New', 'Regular', 'Key'] as const).map((t) => (
-                <label key={t}>
-                  {t} grace days
+            <div className="settings-group">
+              <div className="settings-group-heading">
+                <h3>Grace periods</h3>
+                <p>
+                  Set how many days each relationship tier receives before follow-up
+                  begins.
+                </p>
+              </div>
+              <div className="config-grid">
+                {(['New', 'Regular', 'Key'] as const).map((t) => (
+                  <label key={t}>
+                    {t} grace days
+                    <input
+                      type="number"
+                      min="0"
+                      max="2147483647"
+                      step="1"
+                      required
+                      readOnly={!editable}
+                      value={
+                        Number.isNaN(form.grace_days_by_tier[t])
+                          ? ''
+                          : form.grace_days_by_tier[t]
+                      }
+                      onChange={(e) =>
+                        setForm({
+                          ...form,
+                          grace_days_by_tier: {
+                            ...form.grace_days_by_tier,
+                            [t]: e.target.valueAsNumber,
+                          },
+                        })
+                      }
+                    />
+                  </label>
+                ))}
+              </div>
+            </div>
+            <div className="settings-group">
+              <div className="settings-group-heading">
+                <h3>Alerts &amp; approvals</h3>
+                <p>Choose when balances need attention and an additional approval.</p>
+              </div>
+              <div className="config-grid">
+                <label>
+                  Alert threshold (RM-days)
+                  <input
+                    type="number"
+                    min="0"
+                    max="999999999999.99"
+                    step="0.01"
+                    required
+                    readOnly={!editable}
+                    value={form.alert_threshold}
+                    onChange={(e) =>
+                      setForm({ ...form, alert_threshold: e.target.value })
+                    }
+                  />
+                </label>
+                <label>
+                  Safety days
+                  <input
+                    type="number"
+                    min="1"
+                    max="2147483647"
+                    step="1"
+                    required
+                    readOnly={!editable}
+                    value={
+                      Number.isNaN(form.safety_flag_days) ? '' : form.safety_flag_days
+                    }
+                    onChange={(e) =>
+                      setForm({ ...form, safety_flag_days: e.target.valueAsNumber })
+                    }
+                  />
+                </label>
+                <label>
+                  High-value approval threshold (MYR)
+                  <input
+                    type="number"
+                    min="0"
+                    max="9999999999.99"
+                    step="0.01"
+                    required
+                    readOnly={!editable}
+                    value={form.second_approval_amount}
+                    onChange={(e) =>
+                      setForm({ ...form, second_approval_amount: e.target.value })
+                    }
+                  />
+                </label>
+              </div>
+            </div>
+            <div className="settings-group">
+              <div className="settings-group-heading">
+                <h3>Reminder schedule</h3>
+                <p>
+                  Control the interval between reminders and how overdue days are counted.
+                </p>
+              </div>
+              <div className="config-grid">
+                <label>
+                  Reminder spacing (days)
                   <input
                     type="number"
                     min="0"
@@ -106,106 +204,55 @@ export default function RulesEditor({
                     required
                     readOnly={!editable}
                     value={
-                      Number.isNaN(form.grace_days_by_tier[t])
-                        ? ''
-                        : form.grace_days_by_tier[t]
+                      Number.isNaN(form.min_spacing_days) ? '' : form.min_spacing_days
                     }
                     onChange={(e) =>
-                      setForm({
-                        ...form,
-                        grace_days_by_tier: {
-                          ...form.grace_days_by_tier,
-                          [t]: e.target.valueAsNumber,
-                        },
-                      })
+                      setForm({ ...form, min_spacing_days: e.target.valueAsNumber })
                     }
                   />
                 </label>
-              ))}
+              </div>
+              <label className="check-label">
+                <input
+                  type="checkbox"
+                  checked={form.skip_holidays}
+                  disabled={!editable}
+                  onChange={(e) => setForm({ ...form, skip_holidays: e.target.checked })}
+                />
+                Exclude public holidays from overdue days
+              </label>
+              <p className="settings-help">
+                Weekends count as overdue days. Priority is the outstanding balance
+                multiplied by overdue days after the grace period. High-value reminders
+                require Finance approval followed by a different Owner when the balance is
+                above the threshold.
+              </p>
             </div>
-            <div className="config-grid">
-              <label>
-                Alert threshold (RM-days)
-                <input
-                  type="number"
-                  min="0"
-                  max="999999999999.99"
-                  step="0.01"
-                  required
-                  readOnly={!editable}
-                  value={form.alert_threshold}
-                  onChange={(e) => setForm({ ...form, alert_threshold: e.target.value })}
-                />
-              </label>
-              <label>
-                Safety days
-                <input
-                  type="number"
-                  min="1"
-                  max="2147483647"
-                  step="1"
-                  required
-                  readOnly={!editable}
-                  value={Number.isNaN(form.safety_flag_days) ? '' : form.safety_flag_days}
-                  onChange={(e) =>
-                    setForm({ ...form, safety_flag_days: e.target.valueAsNumber })
-                  }
-                />
-              </label>
-              <label>
-                Reminder spacing (days)
-                <input
-                  type="number"
-                  min="0"
-                  max="2147483647"
-                  step="1"
-                  required
-                  readOnly={!editable}
-                  value={Number.isNaN(form.min_spacing_days) ? '' : form.min_spacing_days}
-                  onChange={(e) =>
-                    setForm({ ...form, min_spacing_days: e.target.valueAsNumber })
-                  }
-                />
-              </label>
-              <label>
-                High-value approval threshold (MYR)
-                <input
-                  type="number"
-                  min="0"
-                  max="9999999999.99"
-                  step="0.01"
-                  required
-                  readOnly={!editable}
-                  value={form.second_approval_amount}
-                  onChange={(e) =>
-                    setForm({ ...form, second_approval_amount: e.target.value })
-                  }
-                />
-              </label>
-            </div>
-            <label className="check-label">
-              <input
-                type="checkbox"
-                checked={form.skip_holidays}
-                disabled={!editable}
-                onChange={(e) => setForm({ ...form, skip_holidays: e.target.checked })}
-              />
-              Exclude public holidays from overdue days
-            </label>
-            <p>
-              Weekends count. Priority = outstanding balance × max(0, overdue days − grace
-              days). High-value reminders require Finance then a distinct Owner when the
-              outstanding balance is strictly above the threshold.
-            </p>
           </fieldset>
         )}
         {saved && (
-          <div className="rule-note">
-            <h3>Approver assignments (read-only)</h3>
-            <p>Primary Finance: {approver(saved.primary_approver_id)}</p>
-            <p>Backup Finance: {approver(saved.backup_approver_id)}</p>
-            <p>Owner: {approver(saved.owner_approver_id)}</p>
-            <p>
+          <div className="settings-group approver-settings">
+            <div className="settings-group-heading">
+              <h3>Approver assignments</h3>
+              <p>
+                Assigned reviewers for company reminders. These assignments are read-only.
+              </p>
+            </div>
+            <div className="approver-grid">
+              <div>
+                <span>Primary Finance</span>
+                <strong>{approver(saved.primary_approver_id)}</strong>
+              </div>
+              <div>
+                <span>Backup Finance</span>
+                <strong>{approver(saved.backup_approver_id)}</strong>
+              </div>
+              <div>
+                <span>Owner</span>
+                <strong>{approver(saved.owner_approver_id)}</strong>
+              </div>
+            </div>
+            <p className="settings-help">
               Backup Finance covers Finance leave. High-value reminders wait while Owner
               is on leave.
             </p>
@@ -231,7 +278,7 @@ export default function RulesEditor({
           </>
         )}
         {editable && (
-          <div className="drawer-actions">
+          <div className="drawer-actions settings-actions">
             <button
               className="button"
               type="button"

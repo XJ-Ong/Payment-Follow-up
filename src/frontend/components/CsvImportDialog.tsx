@@ -1,22 +1,35 @@
-import { useRef, useState } from 'react';
-import { ApiError, csvTemplate, previewCsv } from '../api';
-import type { CsvPreview } from '../csvTypes';
-import type { Customer, Role } from '../model';
+import { useEffect, useRef, useState } from 'react';
+import { ApiError, csvTemplate, csvReferences, previewCsv } from '../api';
+import type { CsvPreview, CsvReference } from '../csvTypes';
+import type { Role } from '../model';
 import Modal from './Modal';
 
 export default function CsvImportDialog({
-  customers,
   role,
   userId,
   onImport,
   onClose,
 }: {
-  customers: Customer[];
   role: Role;
   userId?: string;
   onImport: (text: string) => Promise<number>;
   onClose: () => void;
 }) {
+  const [references, setReferences] = useState<CsvReference[]>([]);
+  const [referenceError, setReferenceError] = useState('');
+  useEffect(() => {
+    let cancelled = false;
+    csvReferences(role, userId)
+      .then((rows) => {
+        if (!cancelled) setReferences(rows);
+      })
+      .catch((e) => {
+        if (!cancelled) setReferenceError(e.message);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [role, userId]);
   const [text, setText] = useState('');
   const [filename, setFilename] = useState('');
   const [preview, setPreview] = useState<CsvPreview | null>(null);
@@ -75,9 +88,11 @@ export default function CsvImportDialog({
               <li>4. Import all invoices</li>
             </ol>
             <p>
-              Use the exact six columns. Dates: YYYY-MM-DD. Amounts: plain MYR numbers
-              with at most two decimal places. Blank initial payment means zero and is
-              recorded on the issue date. UTF-8 CSV only; maximum 1 MiB and 500 rows.
+              Use the exact seven columns: invoice_no, client_id, project_id, issue_date,
+              due_date, total_amount, deposit_paid. Dates: YYYY-MM-DD. Amounts: plain MYR
+              numbers with at most two decimal places. Blank deposit_paid means zero and
+              is recorded on the issue date. Leave project_id blank when no project
+              applies. UTF-8 CSV only; maximum 1 MiB and 500 rows.
             </p>
             <button
               className="button"
@@ -99,15 +114,26 @@ export default function CsvImportDialog({
               Download CSV template
             </button>
             <details>
-              <summary>Customer reference list</summary>
+              <summary>Client and project reference list</summary>
               <p>
-                Copy customer_id from this list. Names are for reference; do not add a
-                customer-name column to the CSV.
+                Use client codes such as CLI-02 and project codes such as PRJ-02. Each
+                project must belong to the selected client. Names are for reference only.
               </p>
-              {customers.map((c) => (
-                <div className="csv-customer" key={c.id}>
+              {referenceError && (
+                <p role="alert">
+                  Could not load references: {referenceError}. Refresh the page to try
+                  again.
+                </p>
+              )}
+              {references.map((c) => (
+                <div className="csv-customer" key={c.client_id}>
                   <strong>{c.name}</strong>
-                  <code>{c.id}</code>
+                  <code>{c.client_id}</code>
+                  {c.projects.map((p) => (
+                    <small key={p.project_id}>
+                      {p.project_id}: {p.name}
+                    </small>
+                  ))}
                 </div>
               ))}
             </details>
@@ -174,7 +200,7 @@ export default function CsvImportDialog({
                 )}
                 <p>
                   Valid-row totals: MYR {preview.total_amount} invoiced · MYR{' '}
-                  {preview.initial_payment} paid · MYR {preview.outstanding_amount}{' '}
+                  {preview.deposit_paid} paid · MYR {preview.outstanding_amount}{' '}
                   outstanding.
                 </p>
                 <div
@@ -187,9 +213,9 @@ export default function CsvImportDialog({
                     <thead>
                       <tr>
                         <th>CSV line</th>
-                        <th>Invoice / customer</th>
+                        <th>Invoice / client / project</th>
                         <th>Dates</th>
-                        <th>Total / payment / outstanding (MYR)</th>
+                        <th>Total / deposit / outstanding (MYR)</th>
                         <th>Validation</th>
                       </tr>
                     </thead>
@@ -199,7 +225,11 @@ export default function CsvImportDialog({
                           <td>{row.row_number}</td>
                           <td>
                             <strong>{row.values.invoice_no || '(missing)'}</strong>
-                            <p>{row.customer_name ?? row.values.customer_id}</p>
+                            <p>{row.customer_name ?? row.values.client_id}</p>
+                            <small>
+                              {(row.project_name ?? row.values.project_id) ||
+                                'No project'}
+                            </small>
                           </td>
                           <td>
                             Issued {row.values.issue_date}
@@ -209,7 +239,7 @@ export default function CsvImportDialog({
                           <td>
                             {row.values.total_amount}
                             <br />
-                            {row.values.initial_payment}
+                            {row.values.deposit_paid}
                             <br />
                             {row.outstanding_amount ?? '—'}
                           </td>

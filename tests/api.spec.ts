@@ -1,6 +1,207 @@
 import { readFile } from 'node:fs/promises';
 import { expect, test } from '@playwright/test';
 
+test('Audit Log searches saved events, preserves filters and shows recorded changes', async ({
+  page,
+  request,
+}) => {
+  const headers = { 'X-Role': 'Finance' };
+  const api = 'http://127.0.0.1:8001/api';
+  const original = await (await request.get(`${api}/invoices`, { headers })).json();
+  const customer = original.customers[0];
+  const number = `AUDIT-BROWSER-${Date.now()}`;
+  const created = await request.post(`${api}/invoices`, {
+    headers,
+    data: {
+      invoice_no: number,
+      client_id: customer.id,
+      issue_date: '2026-10-01',
+      due_date: '2026-10-02',
+      total_amount: '125.50',
+      initial_payment: '0',
+    },
+  });
+  expect(created.ok()).toBeTruthy();
+  await page.goto('/');
+  await page.getByLabel('DEMO ROLE').selectOption('Finance');
+  await page.getByRole('button', { name: 'Audit Log', exact: true }).click();
+  await page.getByLabel('Search audit log').fill(number);
+  await expect(page.getByRole('status')).toHaveText(
+    '1 saved events matching your filters',
+  );
+  const row = page.locator('.audit-event').filter({ hasText: number });
+  await row.focus();
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('dialog')).toContainText('125.50');
+  await expect(page.getByRole('dialog')).toContainText(
+    'The earlier value was not recorded',
+  );
+  await page.keyboard.press('Escape');
+  await expect(page.getByLabel('Search audit log')).toHaveValue(number);
+  await expect(row).toBeFocused();
+  await page.getByLabel('Action', { exact: true }).selectOption('invoice.created');
+  await expect(row).toBeVisible();
+  await page.getByLabel('Actor type', { exact: true }).selectOption('system');
+  await expect(
+    page.getByText('No events match these filters. Try clearing or changing them.'),
+  ).toBeVisible();
+  await page.getByLabel('Actor type', { exact: true }).selectOption('user');
+  await expect(row).toBeVisible();
+  const users = await (await request.get(`${api}/users`, { headers })).json();
+  await page
+    .getByLabel('Actor', { exact: true })
+    .selectOption(
+      users.find(
+        (u: { role: string; is_default: boolean }) =>
+          u.role === 'finance' && u.is_default,
+      ).id,
+    );
+  await expect(row).toBeVisible();
+  const today = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Kuala_Lumpur',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date());
+  await page.getByLabel('From date', { exact: true }).fill(today);
+  await page.getByLabel('To date', { exact: true }).fill(today);
+  await expect(row).toBeVisible();
+  await page.getByLabel('Search audit log').fill('NO-MATCH-AUDIT');
+  await expect(
+    page.getByText('No events match these filters. Try clearing or changing them.'),
+  ).toBeVisible();
+  await page.getByRole('button', { name: 'Clear filters', exact: true }).click();
+  await expect(page.locator('.audit-event').first()).toBeVisible();
+  await page.getByLabel('Search audit log').fill(number);
+  await expect(row).toBeVisible();
+  await page.reload();
+  await page.getByRole('button', { name: 'Audit Log', exact: true }).click();
+  await page.getByLabel('Search audit log').fill(number);
+  await expect(row).toBeVisible();
+
+  const url = `${api}/customers/${customer.id}/profile`;
+  const profile = await (await request.get(url, { headers })).json();
+  const { revision, relationship_tier, preferred_channel, language, do_not_contact } =
+    profile;
+  const tone = profile.tone === 'Friendly' ? 'Firm' : 'Friendly';
+  expect(
+    (
+      await request.post(url, {
+        headers,
+        data: {
+          revision,
+          relationship_tier,
+          preferred_channel,
+          language,
+          tone,
+          do_not_contact,
+        },
+      })
+    ).ok(),
+  ).toBeTruthy();
+  await page.getByRole('button', { name: 'Clear filters', exact: true }).click();
+  await page.getByRole('button', { name: 'Refresh log', exact: true }).click();
+  await page
+    .getByLabel('Action', { exact: true })
+    .selectOption('customer.profile_updated');
+  await page.locator('.audit-event').filter({ hasText: customer.name }).first().click();
+  await expect(page.getByRole('dialog')).toContainText('Recorded changes');
+  await expect(
+    page.getByRole('dialog').getByRole('heading', { name: 'Tone', exact: true }),
+  ).toBeVisible();
+  await expect(page.getByRole('dialog')).toContainText(profile.tone);
+  await expect(page.getByRole('dialog')).toContainText(tone);
+  await closeDrawer(page);
+  await page.getByLabel('DEMO ROLE').selectOption('Owner');
+  await expect(page.getByLabel('Search audit log')).toHaveValue('');
+  await expect(page.locator('.audit-event').first()).toBeVisible();
+  const saved = await (await request.get(url, { headers })).json();
+  expect(
+    (
+      await request.post(url, {
+        headers,
+        data: {
+          revision: saved.revision,
+          relationship_tier,
+          preferred_channel,
+          language,
+          tone: profile.tone,
+          do_not_contact,
+        },
+      })
+    ).ok(),
+  ).toBeTruthy();
+});
+
+test('Audit Log retries failures and fits a mobile viewport', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Audit Log', exact: true }).click();
+  await expect(page.locator('.audit-event').first()).toBeVisible();
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+  ).toBeTruthy();
+  expect(
+    await page
+      .locator('.audit-page')
+      .evaluate(
+        (el) =>
+          el.getBoundingClientRect().left >=
+          document.querySelector('.sidebar')!.getBoundingClientRect().right,
+      ),
+  ).toBeTruthy();
+  await page.screenshot({ path: 'test-results/audit-desktop.png' });
+  await page.route('**/api/audit?*', (route) =>
+    route.fulfill({
+      status: 503,
+      contentType: 'application/json',
+      body: JSON.stringify({ detail: 'Audit temporarily unavailable' }),
+    }),
+  );
+  await page.getByRole('button', { name: 'Refresh log', exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText('Audit temporarily unavailable');
+  await page.unroute('**/api/audit?*');
+  await page.getByRole('button', { name: 'Retry', exact: true }).click();
+  await expect(page.locator('.audit-event').first()).toBeVisible();
+  await page.route('**/api/audit/*', (route) =>
+    route.fulfill({
+      status: 503,
+      contentType: 'application/json',
+      body: JSON.stringify({ detail: 'Event temporarily unavailable' }),
+    }),
+  );
+  await page.locator('.audit-event').first().click();
+  await expect(page.getByRole('dialog').getByRole('alert')).toContainText(
+    'Event temporarily unavailable',
+  );
+  await page.unroute('**/api/audit/*');
+  await page.getByRole('button', { name: 'Retry event', exact: true }).click();
+  await expect(
+    page.getByRole('dialog').getByRole('heading', { name: /^Recorded (facts|changes)$/ }),
+  ).toBeVisible();
+  await closeDrawer(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.getByLabel('Search audit log')).toBeVisible();
+  await page.screenshot({ path: 'test-results/audit-mobile.png' });
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+  ).toBeTruthy();
+  await page.locator('.audit-event').first().click();
+  await expect(page.getByRole('dialog')).toBeVisible();
+  await expect(
+    page.getByRole('dialog').getByRole('heading', { name: /^Recorded (facts|changes)$/ }),
+  ).toBeVisible();
+  await page.screenshot({ path: 'test-results/audit-detail-mobile.png' });
+  await page.locator('.audit-detail').evaluate((el) => {
+    el.scrollTop = el.scrollHeight;
+  });
+  await expect(
+    page.getByRole('dialog').getByRole('heading', { name: /^Recorded (facts|changes)$/ }),
+  ).toBeInViewport();
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+  ).toBeTruthy();
+});
+
 test('API invoice creation, payment and reload persist', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByLabel('DEMO ROLE').locator('option')).toHaveText([
@@ -202,7 +403,7 @@ test('saved draft versions, standard approval and simulated outbox survive reloa
     'aria-selected',
     'true',
   );
-  await page.getByRole('button', { name: 'Activity Log', exact: true }).click();
+  await page.getByRole('button', { name: 'Audit Log', exact: true }).click();
   await expect(page.getByRole('main')).toContainText('Simulated reminder sent');
 });
 
@@ -747,12 +948,12 @@ test('fixed CSV template download, row correction, atomic import and reload', as
   const future = new Date(`${loaded.as_of_date}T00:00:00Z`);
   future.setUTCDate(future.getUTCDate() + 14);
   const header =
-    'invoice_no,customer_id,issue_date,due_date,total_amount,initial_payment';
+    'invoice_no,client_id,project_id,issue_date,due_date,total_amount,deposit_paid';
   const rows = [
-    `CSV-${suffix}-PARTIAL,${customer.id},${past},${past},1000.10,100.10`,
-    `CSV-${suffix}-PAID,${customer.id},${past},${past},1000.10,1000.10`,
-    `CSV-${suffix}-FUTURE,${customer.id},${past},${future.toISOString().slice(0, 10)},1000.10,0`,
-    `CSV-${suffix}-BLOCKED,${blocked.id},${past},${past},1000.10,0`,
+    `CSV-${suffix}-PARTIAL,${customer.id},,${past},${past},1000.10,100.10`,
+    `CSV-${suffix}-PAID,${customer.id},,${past},${past},1000.10,1000.10`,
+    `CSV-${suffix}-FUTURE,${customer.id},,${past},${future.toISOString().slice(0, 10)},1000.10,0`,
+    `CSV-${suffix}-BLOCKED,${blocked.id},,${past},${past},1000.10,0`,
   ];
   const valid = header + '\r\n' + rows.join('\r\n');
   const invalid = valid.replace(',1000.10,100.10', ',1000.10,1001.00');
@@ -853,7 +1054,7 @@ test('CSV encoding errors and stale preview conflicts keep the import review ope
   ).json();
   const customer = loaded.customers[0];
   const number = `CSV-CONFLICT-${Date.now()}`;
-  const text = `invoice_no,customer_id,issue_date,due_date,total_amount,initial_payment\n${number},${customer.id},2026-10-01,2026-10-23,1000.00,0`;
+  const text = `invoice_no,client_id,project_id,issue_date,due_date,total_amount,deposit_paid\n${number},${customer.id},,2026-10-01,2026-10-23,1000.00,0`;
   await input.setInputFiles({
     name: 'conflict.csv',
     mimeType: 'text/csv',
@@ -887,4 +1088,40 @@ test('CSV encoding errors and stale preview conflicts keep the import review ope
   await expect(
     page.getByRole('button', { name: 'Import 0 invoices', exact: true }),
   ).toBeDisabled();
+});
+
+test('team seven-column CSV imports client codes, optional projects and deposits', async ({
+  page,
+}) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Add Invoice', exact: true }).click();
+  await page
+    .getByRole('dialog')
+    .getByRole('button', { name: 'Import CSV', exact: true })
+    .click();
+  await page.getByText('Client and project reference list', { exact: true }).click();
+  await expect(page.getByRole('dialog')).toContainText('CLI-02');
+  await expect(page.getByRole('dialog')).toContainText(
+    'PRJ-02: Q3 Bulk Wholesale Hardware Supply',
+  );
+  await page
+    .getByLabel('CSV file', { exact: true })
+    .setInputFiles('seed_data/valid_invoices_import.csv');
+  await page.getByRole('button', { name: 'Preview CSV', exact: true }).click();
+  await expect(
+    page.getByRole('heading', { name: 'Preview: 4 valid, 0 invalid' }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('region', { name: 'CSV preview', exact: true }),
+  ).toContainText('31600.00');
+  await expect(
+    page.getByRole('region', { name: 'CSV preview', exact: true }),
+  ).toContainText('Q3 Bulk Wholesale Hardware Supply');
+  await page.getByRole('button', { name: 'Import 4 invoices', exact: true }).click();
+  await expect(page.getByRole('heading', { name: '4 invoices imported' })).toBeVisible();
+  await page.getByRole('button', { name: 'Done', exact: true }).click();
+  await page.reload();
+  await openInvoice(page, 'INV-3002');
+  await expandInvoiceDetails(page);
+  await expect(page.getByRole('dialog')).toContainText('MYR 5,000.00');
 });

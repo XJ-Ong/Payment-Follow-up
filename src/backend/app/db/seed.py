@@ -201,6 +201,7 @@ def seed(reset: bool = False) -> None:
             body = _reminder_body(profile, row["invoice_no"], total)
             draft = ReminderDraft(
                 company_id=COMPANY_ID,
+                prepared_by=external_uuid('USR-02'),
                 invoice_id=invoice_ids[row["invoice_no"]],
                 snapshot_id=None,  # no snapshot row for pre-existing history
                 version=1,

@@ -1,6 +1,14 @@
+import { useState } from 'react';
 import { demoMode } from '../api';
 import { CircleAlert, Loader2, SlidersHorizontal } from 'lucide-react';
-import { type Invoice, type Filters, type GraceOverrides } from '../model';
+import {
+  type Invoice,
+  type Filters,
+  type GraceOverrides,
+  getInvoiceCustomer,
+  outstanding,
+  daysOverdue,
+} from '../model';
 import { type Page } from '../navigation';
 import EmptyState from '../components/EmptyState';
 import InvoiceFilters from '../components/InvoiceFilters';
@@ -38,6 +46,43 @@ export default function InvoicesPage({
   error: boolean;
   loading: boolean;
 }) {
+  const [sortBy, setSortBy] = useState('priority');
+  const canSort = view === 'Invoices & Payments';
+  const sortedInvoices =
+    canSort && sortBy !== 'priority'
+      ? [...visible].sort((a, b) => {
+          let difference = 0;
+          switch (sortBy) {
+            case 'invoice-asc':
+              difference = a.id.localeCompare(b.id, undefined, { numeric: true });
+              break;
+            case 'invoice-desc':
+              difference = b.id.localeCompare(a.id, undefined, { numeric: true });
+              break;
+            case 'customer':
+              difference = getInvoiceCustomer(a).name.localeCompare(
+                getInvoiceCustomer(b).name,
+              );
+              break;
+            case 'due-asc':
+              difference = a.due.localeCompare(b.due);
+              break;
+            case 'due-desc':
+              difference = b.due.localeCompare(a.due);
+              break;
+            case 'balance-desc':
+              difference = outstanding(b) - outstanding(a);
+              break;
+            case 'balance-asc':
+              difference = outstanding(a) - outstanding(b);
+              break;
+            case 'overdue':
+              difference = daysOverdue(b) - daysOverdue(a);
+              break;
+          }
+          return difference || a.id.localeCompare(b.id, undefined, { numeric: true });
+        })
+      : visible;
   return (
     <>
       {onImport && (
@@ -58,10 +103,13 @@ export default function InvoicesPage({
         filters={filters}
         setFilters={setFilters}
         onApply={onApply}
-        onReset={onReset}
+        onReset={() => {
+          setSortBy('priority');
+          onReset();
+        }}
       />
       <section className="card results">
-        <div className="section-title">
+        <div className="section-title invoice-results-heading">
           <div className="title-with-count">
             <h2>
               {view === 'Simulated Outbox'
@@ -76,10 +124,32 @@ export default function InvoicesPage({
             </h2>
             <span className="count-pill">{visible.length} invoices</span>
           </div>
-          <span className="sort-label">
-            <SlidersHorizontal size={14} />
-            Sorted by priority
-          </span>
+          {canSort ? (
+            <label className="invoice-sort">
+              <SlidersHorizontal size={15} aria-hidden="true" />
+              Sort by
+              <select
+                aria-label="Sort by"
+                value={sortBy}
+                onChange={(event) => setSortBy(event.target.value)}
+              >
+                <option value="priority">Priority (highest first)</option>
+                <option value="invoice-asc">Invoice number (A to Z)</option>
+                <option value="invoice-desc">Invoice number (Z to A)</option>
+                <option value="customer">Customer name (A to Z)</option>
+                <option value="due-asc">Due date (earliest first)</option>
+                <option value="due-desc">Due date (latest first)</option>
+                <option value="balance-desc">Outstanding (highest first)</option>
+                <option value="balance-asc">Outstanding (lowest first)</option>
+                <option value="overdue">Most overdue</option>
+              </select>
+            </label>
+          ) : (
+            <span className="sort-label">
+              <SlidersHorizontal size={14} />
+              Sorted by priority
+            </span>
+          )}
         </div>
         {error ? (
           <div className="empty">
@@ -104,7 +174,7 @@ export default function InvoicesPage({
           <EmptyState onAdd={onAdd} />
         ) : (
           <InvoiceTable
-            invoices={visible}
+            invoices={sortedInvoices}
             totalCount={totalCount}
             graceOverrides={graceOverrides}
             onReview={onReview}

@@ -49,7 +49,7 @@ export default function AddInvoiceDialog({
   return (
     <Modal
       title="Add an invoice"
-      subtitle="Create a synthetic invoice for your demo workspace."
+      subtitle="Create an invoice for this demo."
       onClose={onClose}
     >
       <form onSubmit={submit} className="dialog-body">

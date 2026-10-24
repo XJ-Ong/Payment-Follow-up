@@ -121,7 +121,7 @@ export default function Sidebar({
             <>
               <span>
                 <strong>Acme Collective</strong>
-                <small>Demo workspace</small>
+                <small>Demo</small>
               </span>
               <ChevronDown size={15} />
             </>

@@ -13,6 +13,7 @@ Money = Annotated[Decimal, Field(gt=0, max_digits=12, decimal_places=2)]
 class InvoiceInput(BaseModel):
     invoice_no: str = Field(min_length=1, max_length=50, pattern=r'.*\S.*')
     client_id: UUID
+    project_id: UUID | None = None
     issue_date: date
     due_date: date
     total_amount: Money
@@ -61,7 +62,14 @@ def create(db, company, adapter, actor, data, source='manual'):
         raise HTTPException(422,'Unknown customer') from None
     if client.company_id != company:
         raise HTTPException(422,'Unknown customer')
-    invoice = Invoice(id=uuid4(),company_id=company,client_id=data.client_id,invoice_no=data.invoice_no,issue_date=data.issue_date,due_date=data.due_date,total_amount=data.total_amount,source=source,status='open')
+    if data.project_id is not None:
+        try:
+            project = adapter.get_project(data.project_id)
+        except LookupError:
+            raise HTTPException(422,'Unknown project') from None
+        if project.client_id != client.id:
+            raise HTTPException(422,'Project must belong to the selected client')
+    invoice = Invoice(id=uuid4(),company_id=company,client_id=data.client_id,project_id=data.project_id,invoice_no=data.invoice_no,issue_date=data.issue_date,due_date=data.due_date,total_amount=data.total_amount,source=source,status='open')
     db.add(invoice)
     db.flush()
     if data.initial_payment:

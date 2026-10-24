@@ -20,7 +20,7 @@ export type Page =
   | 'Customer Profiles'
   | 'Rules & Settings'
   | 'Weekly Summary'
-  | 'Activity Log'
+  | 'Audit Log'
   | 'Simulated Outbox';
 
 type NavigationItem = { label: Page; icon: LucideIcon; group?: boolean };
@@ -34,7 +34,7 @@ export const navigation: NavigationItem[] = [
   { label: 'Customer Profiles', icon: Users },
   { label: 'Rules & Settings', icon: Settings2 },
   { label: 'Weekly Summary', icon: FileClock, group: true },
-  { label: 'Activity Log', icon: Activity },
+  { label: 'Audit Log', icon: Activity },
   { label: 'Simulated Outbox', icon: Send },
 ];
 

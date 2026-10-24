@@ -1,5 +1,6 @@
 import csv
 import io
+from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
@@ -20,7 +21,7 @@ IMPORT = '/api/invoices/import'
 TODAY = malaysia_date(datetime.now(timezone.utc))
 
 def row(**changes):
-    return dict(invoice_no='CSV-'+uuid4().hex[:12],customer_id=str(external_uuid('CLI-01')),issue_date=(TODAY-timedelta(days=60)).isoformat(),due_date=(TODAY-timedelta(days=40)).isoformat(),total_amount='1000.10',initial_payment='100.10') | changes
+    return dict(invoice_no='CSV-'+uuid4().hex[:12],client_id=str(external_uuid('CLI-01')),project_id='',issue_date=(TODAY-timedelta(days=60)).isoformat(),due_date=(TODAY-timedelta(days=40)).isoformat(),total_amount='1000.10',deposit_paid='100.10') | changes
 
 def content(rows, headers=HEADERS, ending='\r\n'):
     stream = io.StringIO(newline='')
@@ -39,21 +40,21 @@ def counts(engine):
 
 def test_preview_is_read_only_and_reports_precise_decimal_totals(client,database):
     before = counts(database[0])
-    text = '\ufeff'+content([row(invoice_no='QUOTED,"'+uuid4().hex[:5],total_amount='0.30',initial_payment='0.10'),row(initial_payment='')],ending='\n')+'\n,,,,,\n'
+    text = '\ufeff'+content([row(invoice_no='QUOTED,"'+uuid4().hex[:5],total_amount='0.30',deposit_paid='0.10'),row(deposit_paid='')],ending='\n')+'\n,,,,,\n'
     result = client.post(PREVIEW,headers=H,json={'csv_text':text}).json()
     assert result['can_import'] and result['valid_count'] == 2
-    assert result['total_amount'] == '1000.40' and result['initial_payment'] == '0.10'
+    assert result['total_amount'] == '1000.40' and result['deposit_paid'] == '0.10'
     assert result['outstanding_amount'] == '1000.30'
     assert result['rows'][0]['row_number'] == 2 and result['rows'][0]['customer_name']
     assert counts(database[0]) == before
 
 @pytest.mark.parametrize('change,column',[
-    ({'invoice_no':''},'invoice_no'),({'invoice_no':'x'*51},'invoice_no'),({'customer_id':str(uuid4())},'customer_id'),
+    ({'invoice_no':''},'invoice_no'),({'invoice_no':'x'*51},'invoice_no'),({'client_id':str(uuid4())},'client_id'),
     ({'issue_date':'10/01/2026'},'issue_date'),({'due_date':'2026-02-30'},'due_date'),
     ({'due_date':'2000-01-01'},'row'),({'total_amount':'0'},'total_amount'),({'total_amount':'-1'},'total_amount'),
     ({'total_amount':'RM 100'},'total_amount'),({'total_amount':'1,000.00'},'total_amount'),({'total_amount':'NaN'},'total_amount'),
     ({'total_amount':'1e3'},'total_amount'),({'total_amount':'1.001'},'total_amount'),({'total_amount':'10000000000.00'},'total_amount'),
-    ({'initial_payment':'1001'},'row'),({'initial_payment':'-1'},'initial_payment'),
+    ({'deposit_paid':'1001'},'row'),({'deposit_paid':'-1'},'deposit_paid'),
 ])
 def test_row_errors_block_the_entire_file(client,database,change,column):
     rows = [row(),row(**change)]
@@ -84,8 +85,8 @@ def test_shape_and_size_limits(client):
     text = content([row()])+',extra,field\n'
     assert client.post(PREVIEW,headers=H,json={'csv_text':text}).json()['invalid_count'] == 1
 
-def test_import_persists_initial_payments_status_actor_and_queue(client,database):
-    records = [row(),row(initial_payment='1000.10'),row(due_date=(TODAY+timedelta(days=14)).isoformat()),row(customer_id=str(external_uuid('CLI-07')))]
+def test_import_persists_deposit_paids_status_actor_and_queue(client,database):
+    records = [row(),row(deposit_paid='1000.10'),row(due_date=(TODAY+timedelta(days=14)).isoformat()),row(client_id=str(external_uuid('CLI-07')))]
     before = counts(database[0])
     response = send(client,records,IMPORT)
     assert response.status_code == 200, response.text
@@ -116,7 +117,7 @@ def test_duplicate_rows_and_database_changes_after_preview(client):
     duplicate = send(client,[record,record]).json()
     assert duplicate['invalid_count'] == 2
     assert send(client,[record]).json()['can_import']
-    manual = {'invoice_no':record['invoice_no'],'client_id':record['customer_id'],**{k:record[k] for k in ['issue_date','due_date','total_amount','initial_payment']}}
+    manual = {'invoice_no':record['invoice_no'],'client_id':record['client_id'],'initial_payment':record['deposit_paid'],**{k:record[k] for k in ['issue_date','due_date','total_amount']}}
     assert client.post('/api/invoices',headers=H,json=manual).status_code == 201
     conflict = send(client,[record,row()],IMPORT)
     assert conflict.status_code == 409
@@ -174,8 +175,42 @@ def test_missing_profile_reports_configuration_error_per_row(client,database):
         values = {c.name:getattr(target,c.name) for c in ClientFollowupProfile.__table__.columns}
         db.delete(target);db.commit()
     try:
-        result=send(client,[row(customer_id=str(external_uuid('CLI-10')))]).json()
+        result=send(client,[row(client_id=str(external_uuid('CLI-10')))]).json()
         assert 'profile' in result['rows'][0]['errors'][0]['message']
     finally:
         with Session(database[0]) as db:
             db.add(ClientFollowupProfile(**values));db.commit()
+
+def test_team_template_codes_projects_and_deposits(client,database):
+    text = (Path(__file__).resolve().parents[3] / 'seed_data/valid_invoices_import.csv').read_text(encoding='utf-8-sig')
+    preview = client.post(PREVIEW,headers=H,json={'csv_text':text}).json()
+    assert preview['can_import'] and preview['valid_count'] == 4
+    assert preview['deposit_paid'] == '2300.50' and preview['outstanding_amount'] == '31600.00'
+    assert preview['rows'][0]['project_name'] == 'Q3 Bulk Wholesale Hardware Supply'
+    result = client.post(IMPORT,headers=H,json={'csv_text':text})
+    assert result.status_code == 200, result.text
+    with Session(database[0]) as db:
+        saved = {i.invoice_no:i for i in db.scalars(select(Invoice).where(Invoice.invoice_no.in_(['INV-3001','INV-3002','INV-3003','INV-3004'])))}
+        assert saved['INV-3001'].client_id == external_uuid('CLI-02')
+        assert saved['INV-3001'].project_id == external_uuid('PRJ-02')
+        assert saved['INV-3004'].project_id is None
+        payment = db.scalar(select(PaymentRecord).where(PaymentRecord.invoice_id == saved['INV-3002'].id))
+        assert payment.amount == Decimal('1800.50')
+    assert client.post(IMPORT,headers=H,json={'csv_text':text}).status_code == 409
+
+@pytest.mark.parametrize('changes', [
+    {'client_id':'CLI-99'}, {'client_id':'PRJ-02'},
+    {'client_id':'CLI-02','project_id':'PRJ-03'},
+    {'client_id':'CLI-02','project_id':'PRJ-99'},
+    {'client_id':'CLI-02','project_id':'CLI-02'},
+])
+def test_invalid_codes_and_project_ownership(client,changes):
+    result = send(client,[row(**changes)]).json()
+    assert not result['can_import'] and result['invalid_count'] == 1
+
+def test_client_project_reference_list(client):
+    response = client.get('/api/invoices/import/references',headers=H)
+    assert response.status_code == 200
+    client_two = next(c for c in response.json() if c['client_id'] == 'CLI-02')
+    assert [p['project_id'] for p in client_two['projects']] == ['PRJ-02']
+    assert client.get('/api/invoices/import/references',headers={'X-Role':'Other Staff'}).status_code == 403

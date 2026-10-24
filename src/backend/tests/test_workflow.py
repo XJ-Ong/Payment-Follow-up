@@ -312,6 +312,8 @@ def test_legacy_migration_preserves_author_history_and_custom_settings():
     with database_context("0002") as (engine,config):
         author, draft_id, invoice_id = external_uuid("USR-03"),uuid4(),uuid4()
         with engine.begin() as db:
+            # Reproduce an older existing schema with historical draft authorship.
+            db.execute(text("ALTER TABLE reminder_draft ADD COLUMN IF NOT EXISTS prepared_by UUID"))
             db.execute(text("INSERT INTO invoice (id,company_id,client_id,invoice_no,issue_date,due_date,total_amount,source) VALUES (:id,:company,:client,'LEGACY','2026-10-01','2026-10-23',100,'manual')"),dict(id=invoice_id,company=COMPANY,client=external_uuid("CLI-01")))
             db.execute(text("INSERT INTO reminder_draft (id,company_id,invoice_id,prepared_by,version,channel,language,tone,body,written_by,verification_result,status) VALUES (:id,:company,:invoice,:author,1,'Email','English','Friendly','Historical content','template','{}','approved')"),dict(id=draft_id,company=COMPANY,invoice=invoice_id,author=author))
             db.execute(text("UPDATE followup_rule SET min_spacing_days=9"))

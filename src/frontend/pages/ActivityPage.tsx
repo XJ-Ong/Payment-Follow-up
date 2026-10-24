@@ -40,7 +40,7 @@ export default function ActivityPage({
       <div className="section-title">
         <div>
           <h2>Workspace activity</h2>
-          <p>Actions from this demo session.</p>
+          <p>Actions from this session.</p>
         </div>
         <Activity size={20} />
       </div>

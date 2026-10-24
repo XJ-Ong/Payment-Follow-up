@@ -41,7 +41,7 @@ export default function WorkflowPage({
           <h2>Follow-ups</h2>
           <p>Prepare / Finance approval / Owner if required / Simulate send</p>
         </div>
-        <span className="prototype-pill">Simulated delivery only</span>
+        <span className="prototype-pill">Simulated delivery</span>
       </div>
       <div
         className="followup-tabs"

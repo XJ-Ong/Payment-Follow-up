@@ -34,3 +34,22 @@ def external_uuid(code: str) -> UUID:
         raise ValueError(f"Unknown Orbyte external id: {code!r}")
     n = _BANDS[prefix] + int(number)
     return UUID(f"00000000-0000-4000-8000-{n:012d}")
+
+
+def reference_uuid(value: str, prefix: str) -> UUID:
+    """Resolve a typed demo code or UUID; callers still verify tenant ownership."""
+    if value.startswith(prefix + '-'):
+        return external_uuid(value)
+    return UUID(value)
+
+
+def reference_code(value: UUID, prefix: str) -> str:
+    """Human-readable codes for synthetic IDs; opaque real IDs remain UUIDs."""
+    tail = str(value).rsplit('-', 1)[-1]
+    if tail.isdecimal():
+        number = int(tail) - _BANDS[prefix]
+        if 0 < number < 100:
+            code = f'{prefix}-{number:02d}'
+            if external_uuid(code) == value:
+                return code
+    return str(value)

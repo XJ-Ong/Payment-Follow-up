@@ -7,7 +7,7 @@ export default function WeeklySummaryPage({ totals }: { totals: InvoiceTotals })
       <div className="section-title">
         <div>
           <h2>This week at a glance</h2>
-          <p>Snapshot of the current demo records · 19–25 Oct 2026</p>
+          <p>Snapshot of current records · 19–25 Oct 2026</p>
         </div>
         <CalendarDays size={20} />
       </div>

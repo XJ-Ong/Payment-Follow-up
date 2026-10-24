@@ -126,3 +126,80 @@ test('simulated loading failure can be recovered', async ({ page }) => {
     'Invoices refreshed.',
   );
 });
+
+test('notification list opens invoice details and supports dismissal', async ({
+  page,
+}) => {
+  await page.goto('/');
+  const bell = page.getByRole('button', { name: 'Show review notifications' });
+  await bell.click();
+  const panel = page.getByRole('region', { name: 'Notifications', exact: true });
+  await expect(panel).toBeVisible();
+  await expect(
+    panel.getByRole('button', { name: /Review reminder/ }).first(),
+  ).toBeVisible();
+  await panel
+    .getByRole('button', { name: /Review reminder/ })
+    .first()
+    .click();
+  await expect(panel).toHaveCount(0);
+  await expect(page.getByRole('dialog')).toBeVisible();
+  await page.getByRole('button', { name: 'Close dialog' }).click();
+  await bell.click();
+  await page.keyboard.press('Escape');
+  await expect(panel).toHaveCount(0);
+  await expect(bell).toBeFocused();
+  await bell.click();
+  await page.getByRole('heading', { name: 'Payment Follow-up', exact: true }).click();
+  await expect(panel).toHaveCount(0);
+  await page.getByLabel('DEMO ROLE').selectOption('Other Staff');
+  await bell.click();
+  await expect(panel).toContainText('No items need your attention');
+});
+
+test('customer profile search filters names and contacts and can be cleared', async ({
+  page,
+}) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Customer Profiles', exact: false }).click();
+  const search = page.getByRole('searchbox', { name: 'Search customers' });
+  const cards = page.locator('.customer-profile');
+  const originalCount = await cards.count();
+  expect(originalCount).toBeGreaterThan(1);
+  await search.fill('  MERIDIAN  ');
+  await expect(cards).toHaveCount(1);
+  await expect(cards).toContainText('Meridian Studio');
+  await search.fill('finance@bloom.example');
+  await expect(cards).toHaveCount(1);
+  await expect(cards).toContainText('Bloom & Co.');
+  await search.fill('no matching customer');
+  await expect(cards).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'No customers found' })).toBeVisible();
+  await page.getByRole('button', { name: 'Clear search' }).click();
+  await expect(cards).toHaveCount(originalCount);
+});
+
+test('invoice sorting changes row order and reset restores priority', async ({
+  page,
+}) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Invoices & Payments', exact: false }).click();
+  const sort = page.getByLabel('Sort by', { exact: true });
+  const links = page.locator('tbody .invoice-link');
+  const original = await links.allTextContents();
+  await sort.selectOption('invoice-asc');
+  const ascending = await links.allTextContents();
+  expect(ascending).toEqual(
+    [...original].sort((a, b) => a.localeCompare(b, undefined, { numeric: true })),
+  );
+  await sort.selectOption('invoice-desc');
+  expect(await links.allTextContents()).toEqual([...ascending].reverse());
+  await sort.selectOption('balance-asc');
+  const balances = (await page.locator('tbody .amount').allTextContents()).map((value) =>
+    Number(value.replace(/[^0-9.-]/g, '')),
+  );
+  expect(balances).toEqual([...balances].sort((a, b) => a - b));
+  await page.getByRole('button', { name: 'Reset', exact: true }).click();
+  await expect(sort).toHaveValue('priority');
+  expect(await links.allTextContents()).toEqual(original);
+});

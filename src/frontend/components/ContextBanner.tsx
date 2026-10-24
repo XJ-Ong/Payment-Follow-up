@@ -13,7 +13,7 @@ export default function ContextBanner({
         <FileCheck2 size={24} />
       </span>
       <div>
-        <span className="banner-label">FOLLOW-UP OVERVIEW</span>
+        <span className="banner-label">OVERVIEW</span>
         <h2>
           {readyCount !== undefined
             ? `${readyCount} invoices ready for follow-up`

@@ -21,7 +21,7 @@ export default function OutboxPage({ rows }: { rows: OutboxRecord[] }) {
             })}
           </p>
           <pre style={{ whiteSpace: 'pre-wrap' }}>{row.approved_body}</pre>
-          <small>Status: simulated</small>
+          <small>Simulated</small>
         </article>
       ))}
     </section>

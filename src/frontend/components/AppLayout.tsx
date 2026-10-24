@@ -11,13 +11,15 @@ import {
 import { type Page } from '../navigation';
 import CustomerBalanceChart from './CustomerBalanceChart';
 import Sidebar from './Sidebar';
-import Header from './Header';
+import Header, { type AttentionItem } from './Header';
 import PageHeader from './PageHeader';
 import ContextBanner from './ContextBanner';
 import PaymentSummary from './PaymentSummary';
 import PermissionDenied from './PermissionDenied';
 
 export default function AppLayout({
+  attentionItems,
+  notificationError,
   users,
   userId,
   onUserChange,
@@ -39,6 +41,8 @@ export default function AppLayout({
   onSeedTestData,
   seeding = false,
 }: {
+  attentionItems: AttentionItem[];
+  notificationError: boolean;
   users: DemoUser[];
   userId?: string;
   onUserChange: (id: string) => void;
@@ -86,16 +90,17 @@ export default function AppLayout({
       />
       <div className="main-shell">
         <Header
-          followupMode={totals.ready !== undefined}
+          items={attentionItems}
+          loading={loading}
+          error={notificationError}
+          identity={`${role}-${userId}`}
           active={active}
-          reviewCount={totals.alerts ?? totals.review}
           onOpenNavigation={() => {
             setCollapsed(false);
             setMobile(true);
           }}
-          onNotify={onNotify}
         />
-        <main>
+        <main className={active === 'Dashboard' ? 'dashboard-main' : undefined}>
           <PageHeader
             heading={heading}
             loading={loading}
@@ -194,12 +199,17 @@ export default function AppLayout({
               )}
               {(totals.ready === undefined || active === 'Dashboard') && (
                 <>
-                  <ContextBanner reviewCount={totals.alerts ?? totals.review} />
+                  {active !== 'Dashboard' && (
+                    <ContextBanner reviewCount={totals.alerts ?? totals.review} />
+                  )}
                   <PaymentSummary totals={totals} />
+                  {active === 'Dashboard' && (
+                    <CustomerBalanceChart data={balances} total={totalOutstanding} />
+                  )}
                 </>
               )}
               {children}
-              {(totals.ready === undefined || active === 'Dashboard') && (
+              {totals.ready === undefined && active !== 'Dashboard' && (
                 <CustomerBalanceChart data={balances} total={totalOutstanding} />
               )}
               <footer className="page-footer">
@@ -208,8 +218,7 @@ export default function AppLayout({
                   Built for thoughtful follow-ups.
                 </span>
                 <span>
-                  Orbyte-inspired prototype <span>·</span> Synthetic data <span>·</span>{' '}
-                  Simulated delivery only
+                  Prototype <span>·</span> Synthetic data <span>·</span> Simulated delivery
                 </span>
               </footer>
             </>

@@ -6,7 +6,7 @@ from typing import Annotated, Literal
 from uuid import UUID, uuid4
 from zoneinfo import ZoneInfo
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Request
+from fastapi import Depends, FastAPI, Header, HTTPException, Request, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response, JSONResponse
 from sqlalchemy import func, select, text
@@ -20,12 +20,14 @@ from .orbyte.mock import MockOrbyteAdapter
 from .orbyte.schemas import AppUser
 from .workflow_schemas import DraftMutation, DraftView, OutboxView, ActivityView, WorkflowView
 from .services import workflow
+from .services import audit as audit_ops
+from .audit_schemas import AuditPage, AuditDetail
 from .followup_schemas import WorkspaceView, RuleView, SettingsSaveView
 from .settings_schemas import ProfileInput, ProfileView, RulesInput
 from .services import settings
 from .services import invoices as invoice_ops, csv_import
 from .services.invoices import InvoiceInput, PaymentInput
-from .csv_schemas import CsvInput, CsvPreview, CsvImportResult
+from .csv_schemas import CsvInput, CsvPreview, CsvImportResult, CsvClientReference
 from .services.followups import ConfigurationError, lock_rule, refresh_workspace, read_workspace
 
 app = FastAPI(title="Payment Follow-up")
@@ -224,6 +226,32 @@ def activity(db: DB, role: Role):
     return activity_rows(db,role)
 
 
+@app.get("/api/audit", response_model=AuditPage)
+def audit_page(db: DB, role: Role, search: Annotated[str, Query(max_length=200)] = "",
+               date_from: date | None = None, date_to: date | None = None,
+               actor: str | None = None, action: Annotated[str | None, Query(max_length=100)] = None,
+               page: Annotated[int, Query(ge=1)] = 1,
+               actor_type: Literal["user", "system", "ai"] | None = None):
+    if date_from and date_to and date_from > date_to:
+        raise HTTPException(422, "Start date must be on or before end date")
+    if date_to == date.max or any(d and d.year == 1 for d in (date_from, date_to)):
+        raise HTTPException(422, "Date is outside the supported range")
+    if actor and actor != "unattributed":
+        try:
+            actor = UUID(actor)
+        except ValueError:
+            raise HTTPException(422, "Invalid actor identifier") from None
+    return audit_ops.read_page(db,COMPANY,adapter,search.strip(),date_from,date_to,actor,action,page,actor_type)
+
+
+@app.get("/api/audit/{event_id}", response_model=AuditDetail)
+def audit_detail(event_id: UUID, db: DB, role: Role):
+    result = audit_ops.read_detail(db,COMPANY,adapter,event_id)
+    if result is None:
+        raise HTTPException(404,"Audit event not found")
+    return result
+
+
 @app.get("/api/invoices/{invoice_id}/timeline", response_model=list[ActivityView])
 def timeline(invoice_id: UUID, db: DB, role: Role):
     if db.scalar(select(Invoice.id).where(Invoice.company_id == COMPANY,Invoice.id == invoice_id)) is None:
@@ -285,3 +313,8 @@ def import_invoice_csv(data: CsvInput, db: DB, role: Role):
     except Exception:
         db.rollback()
         raise
+
+
+@app.get('/api/invoices/import/references', response_model=list[CsvClientReference])
+def invoice_csv_references(role: Role):
+    return csv_import.references(COMPANY,adapter)

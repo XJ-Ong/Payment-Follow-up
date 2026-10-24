@@ -15,7 +15,7 @@ export default function SettingsPage({
   onFailRefreshChange: (enabled: boolean) => void;
 }) {
   return (
-    <section className="card settings">
+    <section className="card settings rules-settings demo-settings">
       <div className="section-title">
         <div>
           <h2>Follow-up rules</h2>
@@ -24,9 +24,12 @@ export default function SettingsPage({
         <Settings2 size={20} />
       </div>
       <div className="rule-note">
-        Priority = outstanding amount Ã— max(0, days overdue âˆ’ grace days). Owner and
-        Finance may approve submitted reminders. Owner and Finance may create and submit
-        drafts.
+        Priority is the outstanding amount multiplied by overdue days after the grace
+        period. Owner and Finance can create drafts and approve submitted reminders.
+      </div>
+      <div className="settings-group-heading">
+        <h3>Customer grace periods</h3>
+        <p>Adjust the follow-up grace period for each customer.</p>
       </div>
       {customers.map((c) => (
         <div className="rule-row" key={c.id}>
@@ -34,7 +37,7 @@ export default function SettingsPage({
             <strong>{c.name}</strong>
             <small>
               {c.doNotContact
-                ? 'Do not contact Â· drafts and delivery blocked'
+                ? 'Do not contact — drafts and delivery blocked'
                 : 'Reminders allowed'}
             </small>
           </span>
@@ -58,7 +61,7 @@ export default function SettingsPage({
         />
         Simulate an error on the next refresh
       </label>
-      <p className="muted">Rule edits are a local demo preview and reset on reload.</p>
+      <p className="muted">Rule edits reset on reload.</p>
     </section>
   );
 }

@@ -44,6 +44,7 @@ import AddInvoiceDialog from './components/AddInvoiceDialog';
 import AppLayout from './components/AppLayout';
 import ReviewDrawer from './components/ReviewDrawer';
 import Toast from './components/Toast';
+import type { AttentionItem } from './components/Header';
 import WorkflowPage from './pages/WorkflowPage';
 import { invoiceStage, type FollowupStage } from './followupStages';
 import type {
@@ -54,6 +55,7 @@ import type {
   DraftPayload,
 } from './workflowTypes';
 import ActivityPage from './pages/ActivityPage';
+import AuditPage from './pages/AuditPage';
 import CustomerPage from './pages/CustomerPage';
 import InvoicesPage from './pages/InvoicesPage';
 import SettingsPage from './pages/SettingsPage';
@@ -66,8 +68,8 @@ export default function App() {
   const [users, setUsers] = useState<DemoUser[]>([]);
   const [outbox, setOutbox] = useState<OutboxRecord[]>([]);
   const [activity, setActivity] = useState<ActivityRecord[]>([]);
-  const [dashboard, setDashboard] = useState<Dashboard | null>(null);
   const [alerts, setAlerts] = useState<FollowupAlert[]>([]);
+  const [dashboard, setDashboard] = useState<Dashboard | null>(null);
   const [rules, setRules] = useState<SavedRules | null>(null);
   const [asOf, setAsOf] = useState<string | undefined>();
   const requestGeneration = useRef(0);
@@ -86,7 +88,7 @@ export default function App() {
   const seedRunning = useRef(false);
   const [error, setError] = useState(false);
   const [failRefresh, setFailRefresh] = useState(false);
-  const [logs, setLogs] = useState(['Demo workspace opened. All delivery is simulated.']);
+  const [logs, setLogs] = useState(['Workspace opened. Delivery is simulated.']);
   const [graceOverrides, setGraceOverrides] = useState<GraceOverrides>({});
   const [refreshLabel, setRefreshLabel] = useState('All changes up to date');
 
@@ -495,8 +497,12 @@ export default function App() {
             graceOverrides={graceOverrides}
           />
         );
-      case 'Activity Log':
-        return <ActivityPage logs={logs} records={demoMode ? undefined : activity} />;
+      case 'Audit Log':
+        return demoMode ? (
+          <ActivityPage logs={logs} />
+        ) : (
+          <AuditPage key={`${role}-${userId}`} role={role} userId={userId} />
+        );
       case 'Weekly Summary':
         return <WeeklySummaryPage totals={totals} />;
       default:
@@ -525,8 +531,62 @@ export default function App() {
     }
   }
 
+  const attentionItems: AttentionItem[] = [];
+  const currentUser =
+    userId ??
+    users.find(
+      (user) => user.is_default && user.role === (role === 'Owner' ? 'owner' : 'finance'),
+    )?.id;
+  if (role !== 'Other Staff') {
+    for (const invoice of invoices) {
+      const draft = invoice.workflow?.current;
+      const allowed = draft?.allowed_actions ?? [];
+      const action = demoMode
+        ? invoice.status === 'Needs review'
+          ? 'Review reminder'
+          : invoice.status === 'Draft prepared'
+            ? 'Complete draft'
+            : null
+        : allowed.includes('approve')
+          ? 'Approval required'
+          : draft?.status === 'approved' && allowed.includes('send')
+            ? 'Ready to send'
+            : draft?.status === 'draft' && allowed.includes('submit')
+              ? 'Complete draft'
+              : !draft && invoice.calculation?.eligible
+                ? 'Ready for follow-up'
+                : null;
+      if (action && !getInvoiceCustomer(invoice).doNotContact) {
+        attentionItems.push({
+          id: `invoice-${invoice.id}`,
+          title: `${action} ? ${invoice.id}`,
+          detail:
+            customers.find((customer) => customer.id === invoice.customerId)?.name ??
+            invoice.customer?.name ??
+            invoice.customerId,
+          onOpen: () => setSelected(invoice.id),
+        });
+      }
+    }
+    for (const alert of alerts.filter(
+      (alert) =>
+        alert.recipient_id === currentUser && ['new', 'seen'].includes(alert.status),
+    )) {
+      const invoice = invoices.find((invoice) => invoice.databaseId === alert.invoice_id);
+      if (invoice)
+        attentionItems.push({
+          id: `alert-${alert.id}`,
+          title: `Follow-up alert ? ${invoice.id}`,
+          detail: alert.reason,
+          onOpen: () => setSelected(invoice.id),
+        });
+    }
+  }
+
   return (
     <AppLayout
+      attentionItems={attentionItems}
+      notificationError={error}
       onSeedTestData={
         import.meta.env.DEV && !demoMode && rules && asOf
           ? () => void seedTestInvoices()
@@ -559,7 +619,6 @@ export default function App() {
           {importing && !demoMode && role !== 'Other Staff' && (
             <CsvImportDialog
               key={`${role}-${userId}`}
-              customers={customers}
               role={role}
               userId={userId}
               onImport={importInvoices}
@@ -617,63 +676,6 @@ export default function App() {
         </>
       }
     >
-      {!demoMode && active === 'Dashboard' && !loading && !error && (
-        <section className="card" aria-label="Follow-up alerts">
-          <div className="section-title">
-            <h2>Follow-up alerts</h2>
-            <span>{dashboard?.alert_count ?? 0} active alerts</span>
-          </div>
-          {alerts
-            .filter((a) => a.status === 'new' || a.status === 'seen')
-            .map((alert) => {
-              const invoice = invoices.find((i) => i.databaseId === alert.invoice_id);
-              return (
-                <div className="rule-row" key={alert.id}>
-                  <div>
-                    <strong>{invoice?.id}</strong>
-                    <p>{alert.reason}</p>
-                  </div>
-                  <button
-                    className="button"
-                    onClick={() => invoice && setSelected(invoice.id)}
-                  >
-                    View calculation
-                  </button>
-                </div>
-              );
-            })}
-          {!dashboard?.alert_count && <p>No active follow-up alerts.</p>}
-        </section>
-      )}
-      {!demoMode && active === 'Dashboard' && (
-        <section
-          className="card dashboard-followup-links"
-          aria-label="Continue follow-ups"
-        >
-          <h2>Continue follow-ups</h2>
-          {(
-            [
-              'Ready',
-              'Drafts',
-              'Awaiting approval',
-              'Ready to send',
-              'Sent',
-              'Deferred',
-            ] as FollowupStage[]
-          ).map((stage) => (
-            <button
-              className="button"
-              key={stage}
-              onClick={() => {
-                setFollowupStage(stage);
-                navigate('Follow-ups');
-              }}
-            >
-              {stage}
-            </button>
-          ))}
-        </section>
-      )}
       {renderPage()}
     </AppLayout>
   );

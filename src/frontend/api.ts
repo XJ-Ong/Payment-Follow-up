@@ -1,5 +1,5 @@
 import type { Profile, ProfileInput, RulesInput } from './settingsTypes';
-import type { CsvPreview, CsvResult } from './csvTypes';
+import type { CsvPreview, CsvResult, CsvReference } from './csvTypes';
 import type { Customer, Invoice, Role, FollowupCalculation } from './model';
 
 import type {
@@ -259,3 +259,6 @@ export const importCsv = (csv_text: string, role: Role, userId?: string) =>
   request<CsvResult>('/invoices/import', role, { csv_text }, userId);
 export const csvTemplate = (role: Role, userId?: string) =>
   request<string>('/invoices/import/template', role, undefined, userId, 'text');
+
+export const csvReferences = (role: Role, userId?: string) =>
+  request<CsvReference[]>('/invoices/import/references', role, undefined, userId);
