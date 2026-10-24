@@ -174,6 +174,22 @@ origin. Verify the public URL with the [Mozilla HTTP Observatory](https://observ
 after deployment; a B grade is 70–79 points, but the exact score can change as Observatory tests
 and modifiers evolve. Do not use the local demo `X-Role` header as production authentication.
 
+### Demo mode and API security
+
+- `DEMO_MODE=true` enables the `X-Role` / `X-User-Id` header simulation used by the demo and the
+  test suite. It is **not** real authentication, and the backend logs a warning while it is on.
+  Fail-to-secure: with the flag unset or false, role-protected endpoints return 403 and only
+  `/api/health` stays open.
+- `CORS_ORIGINS` is validated at startup: explicit `http(s)://host[:port]` entries only; a
+  wildcard or malformed value aborts startup instead of silently allowing any origin.
+- `RATE_LIMIT_PER_MINUTE` (default 1200, `0` disables) limits requests per client IP per minute
+  on `/api/*` (health is exempt); excess requests receive 429 with a `Retry-After` header.
+- `DATABASE_URL` must be a `postgresql://` connection string or the backend refuses to start.
+- AI prompts are built only from sanitized facts (control characters stripped, whitespace
+  collapsed, length capped) to neutralize prompt-injection payloads in names and numbers.
+- Production follow-ups (documented, not built for the MVP): real JWT/session authentication,
+  multi-tenant company scoping, and a secrets manager for AI keys.
+
 ### API contract
 
 - `GET /api/health`: database connectivity; 503 when unavailable.

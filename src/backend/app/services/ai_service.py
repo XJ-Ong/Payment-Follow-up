@@ -21,6 +21,7 @@ Guardrails (solution_v2.md §6.3) honoured here:
   numbers and emails are never passed to the model.
 """
 import os
+import re
 from decimal import Decimal
 from typing import Literal
 
@@ -32,6 +33,27 @@ DEFAULT_MODEL = os.getenv("AI_MODEL", "meta-llama/Llama-2-7b-chat-hf")
 MAX_TOKENS = int(os.getenv("AI_MAX_TOKENS", "300"))
 TEMPERATURE = float(os.getenv("AI_TEMPERATURE", "0.7"))
 REQUEST_TIMEOUT = float(os.getenv("AI_TIMEOUT_SECONDS", "10"))
+
+_CONTROL_CHARS = re.compile(r"[\x00-\x08\x0b-\x1f\x7f]")
+_WHITESPACE = re.compile(r"\s+")
+MAX_FACT_LENGTH = 200
+
+
+def sanitize_facts(facts: dict) -> dict:
+    """Neutralise prompt-injection vectors in string facts (security review).
+
+    Strips ASCII control characters, collapses all whitespace (including the
+    newlines used in prompt-injection payloads) to single spaces, and caps each
+    string at MAX_FACT_LENGTH. Applied to every fact before the prompt or the
+    template is built, so number verification compares like with like.
+    """
+    clean = {}
+    for key, value in facts.items():
+        if isinstance(value, str):
+            value = _CONTROL_CHARS.sub("", value.replace("\t", " "))
+            value = _WHITESPACE.sub(" ", value).strip()[:MAX_FACT_LENGTH]
+        clean[key] = value
+    return clean
 
 # The OpenAI client is optional. Without the library, the credentials, or a
 # reachable endpoint, every call degrades to a template so the demo never blocks.
@@ -66,6 +88,7 @@ def draft_reminder(facts: dict, policy: dict, tone: Tone | None = None) -> tuple
         activity log.
     """
     del policy  # Reserved for future drafting rules.
+    facts = sanitize_facts(facts)
     if tone is not None:
         facts = {**facts, "tone": tone}
     if not AI_AVAILABLE or client is None:
@@ -220,7 +243,7 @@ def generate_weekly_narrative(metrics: dict, language: Language = "English") -> 
                 f"Kami mengutip RM {collected:,.2f} dan meluluskan {approved} daripada {drafted} peringatan yang "
                 "dicadangkan. ")
         if approved < drafted:
-            text += f"{drafted - approved} peringatan ditangguhkan atau dilangkau. "
+            text += f"{drafted - approved} peringatan masih menunggu keputusan. "
         if snoozed:
             text += f"{snoozed} item yang ditangguhkan akan aktif semula minggu depan."
     else:
@@ -229,7 +252,7 @@ def generate_weekly_narrative(metrics: dict, language: Language = "English") -> 
         text = (f"This week, total overdue stands at RM {total_overdue:,.2f} ({change_text} from last week). "
                 f"We collected RM {collected:,.2f} and approved {approved} of {drafted} suggested reminders. ")
         if approved < drafted:
-            text += f"{drafted - approved} reminders were skipped or snoozed. "
+            text += f"{drafted - approved} reminders are still awaiting a decision. "
         if snoozed:
             text += f"{snoozed} snoozed items will resume next week."
     return text.strip(), {"source": "template", "model": None, "prompt_version": PROMPT_VERSION, "language": language}

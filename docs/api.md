@@ -133,6 +133,141 @@ if (response.ok) {
 
 ---
 
+## Invoice & Workspace
+
+### List invoices
+
+```
+GET /api/invoices
+```
+
+**Permissions:** Owner or Finance. Returns `{ "invoices": [ ...InvoiceView ], "as_of_date": "YYYY-MM-DD" }` with adapter-backed customer preferences and Malaysia-localised `as_of_date`.
+
+### Create invoice
+
+```
+POST /api/invoices
+Content-Type: application/json
+
+{ "invoice_no": "...", "client_id": "<uuid>", "issue_date": "YYYY-MM-DD",
+  "due_date": "YYYY-MM-DD", "total_amount": "5000.00",
+  "initial_payment": "0.00",            // optional
+  "project_id": "<uuid>", "milestone_id": "<uuid>",  // optional (S12)
+  "source": "manual" }                  // optional; derived from milestone_id when omitted
+```
+
+**Errors:** `409` "Invoice number already exists", `422` "Unknown customer" / "Due date must be on or after issue date".
+
+### Record payment
+
+```
+POST /api/invoices/{invoice_id}/payments
+Content-Type: application/json
+
+{ "amount": "500.00", "received_date": "YYYY-MM-DD",
+  "payment_type": "deposit|partial|full",   // optional
+  "reference_number": "..." }               // optional
+```
+
+**Errors:** `422` "Payment exceeds outstanding balance or invoice is void", `422` "Full payment must equal outstanding balance".
+
+### Workspace view
+
+```
+GET /api/followups
+```
+
+Full personalized `WorkspaceView` — same shape as the response of `POST /api/followups/refresh` (customers, invoices with `calculation`, rules, dashboard, queue/alerts).
+
+```
+POST /api/followups/refresh
+```
+
+Recomputes priority scores and today's queue. Logs `followups.refreshed` (excluded from the activity feed). This is the manual alternative to the optional scheduler job.
+
+---
+
+## Reminder Drafts & Approval Workflow
+
+The draft state machine: `draft` → (submit) → `pending_approval` → (approve) → `approved` → (send) → `sent`. Every action requires a body of `{ "version": <int> }` (optimistic concurrency: use the draft's current `version`).
+
+### Create a draft
+
+```
+POST /api/invoices/{invoice_id}/drafts
+```
+
+Generates a reminder (AI when enabled, otherwise template) in the customer's language/tone/channel. Returns `201` with a `DraftView` (`status: "draft"`, `written_by: "ai" | "template"`, `allowed_actions`).
+
+### List draft versions
+
+```
+GET /api/invoices/{invoice_id}/drafts
+```
+
+All versions, newest first.
+
+### Draft actions
+
+```
+POST /api/drafts/{draft_id}/{action}
+Content-Type: application/json
+
+{ "version": 1 }
+```
+
+| Action | From state | Effect |
+|---|---|---|
+| `submit` | `draft` | Sends for approval; routes to the assigned approver (leave backup supported). |
+| `approve` | `pending_approval` | Records an approval. High-value drafts (`second_approval_amount`) need Owner as second approver. |
+| `edit-approve` | `pending_approval` | Approve with an edited body: `{ "version": 1, "body": "..." }`. |
+| `skip` | `draft` / `pending_approval` | Closes the draft with a `reason`. |
+| `snooze` | `draft` / `pending_approval` | Pauses until `snooze_until` (date). |
+| `send` | `approved` | Simulated dispatch into the outbox — **no real message is ever sent**. |
+
+**Permissions:** acting user must match the assigned approver for `approve`/`edit-approve`; otherwise `403` "Action is not permitted for this user or workflow state".
+
+### Outbox (simulated sending)
+
+```
+GET /api/outbox
+```
+
+Prepared/sent message previews with `status: "simulated"` and the target `channel`.
+
+### Timeline & activity
+
+```
+GET /api/invoices/{invoice_id}/timeline    # activity for one invoice
+GET /api/activity                          # company-wide audit trail
+```
+
+Each row: `action`, `actor_type` (`user` / `system`), `actor_id`, `actor_name`, `entity_type`, `entity_id`, `created_at`, `details`.
+
+---
+
+## Customers & Users
+
+```
+GET  /api/customers/{client_id}/profile     # follow-up profile (tier, grace days, channel, language, tone, do-not-contact)
+POST /api/customers/{client_id}/profile     # update (Owner or Finance; optimistic revision)
+GET  /api/users                             # simulated directory (Owner/Finance/backup approvers)
+```
+
+**Errors:** `404` "Customer not found", `422` `Customer has no contact detail for {channel}`.
+
+---
+
+## Health
+
+```
+GET /api/health
+```
+
+`200` when the database is reachable, `503` "Database unavailable" otherwise.
+
+---
+
 ## Milestone Billing Suggestions
 
 Auto-suggest an invoice from a completed project milestone (S12). Milestone,

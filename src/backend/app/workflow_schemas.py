@@ -67,6 +67,7 @@ class OutboxView(BaseModel):
 class ActivityView(BaseModel):
     id: UUID
     action: str
+    actor_type: str | None = None
     actor_id: UUID | None
     actor_name: str
     entity_type: str
