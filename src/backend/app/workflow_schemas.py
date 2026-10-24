@@ -27,6 +27,10 @@ class DraftView(BaseModel):
     channel: str
     language: str
     tone: str
+    written_by: str
+    ai_model: str | None = None
+    prompt_version: str | None = None
+    verification_result: dict | None = None
     recipient: str
     prepared_by: UUID | None
     author_name: str
