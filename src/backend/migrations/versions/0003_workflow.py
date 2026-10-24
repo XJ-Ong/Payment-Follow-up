@@ -11,8 +11,9 @@ def upgrade():
     op.add_column("followup_rule", sa.Column("owner_approver_id", pg.UUID(), nullable=True))
     op.add_column("invoice", sa.Column("followup_suppressed_until", sa.Date(), nullable=True))
     op.add_column("invoice", sa.Column("followup_suppression_reason", sa.Text(), nullable=True))
-    # prepared_by already exists in the frozen baseline. Restore its ORM mapping;
-    # do not overwrite legacy authors or infer identities for unknown history.
+    # prepared_by is present on adopted demo databases but missing from the frozen
+    # baseline; add it idempotently so fresh databases match the ORM mapping.
+    op.execute("ALTER TABLE reminder_draft ADD COLUMN IF NOT EXISTS prepared_by UUID")
     for name in ("facts", "approval_policy"):
         op.add_column("reminder_draft", sa.Column(name, pg.JSONB(), nullable=False, server_default=sa.text("'{}'::jsonb")))
     op.add_column("reminder_draft", sa.Column("is_current", sa.Boolean(), nullable=False, server_default=sa.text("false")))

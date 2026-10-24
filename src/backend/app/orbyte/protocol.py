@@ -64,6 +64,10 @@ class OrbyteAdapter(Protocol):
         """One project milestone (invoice source for S12)."""
         ...
 
+    def list_milestones(self, project_id: UUID) -> list[Milestone]:
+        """Milestones of one project (S12 unbilled scan)."""
+        ...
+
     def list_approved_leave(self, user_id: UUID, on_date: date) -> list[ApprovedLeave]:
         """Approved leave covering `on_date` for `user_id` (S13 routing)."""
         ...

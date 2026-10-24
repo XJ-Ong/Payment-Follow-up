@@ -1,7 +1,13 @@
-"""Database-backed demo API. X-Role is simulation, not authentication."""
+"""Database-backed demo API. X-Role simulation is gated behind DEMO_MODE; it is not authentication."""
+import logging
 import os
+import re
+import threading
+from collections import defaultdict
+from contextlib import asynccontextmanager
 from datetime import date, datetime
 from decimal import Decimal
+from time import monotonic
 from typing import Annotated, Literal
 from uuid import UUID, uuid4
 from zoneinfo import ZoneInfo
@@ -13,7 +19,7 @@ from sqlalchemy import func, select, text
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from .db.models import Invoice, PaymentRecord, ClientFollowupProfile, FollowupRule, ActivityLog
+from .db.models import Invoice, PaymentRecord, ClientFollowupProfile, FollowupRule, ActivityLog, WeeklySummary
 from .db.session import SessionLocal
 from .ids import external_uuid
 from .orbyte.mock import MockOrbyteAdapter
@@ -23,13 +29,92 @@ from .services import workflow
 from .followup_schemas import WorkspaceView, RuleView, SettingsSaveView
 from .settings_schemas import ProfileInput, ProfileView, RulesInput
 from .services import settings
-from .services import invoices as invoice_ops, csv_import
+from .services import invoices as invoice_ops, csv_import, milestones, summary
 from .services.invoices import InvoiceInput, PaymentInput
 from .csv_schemas import CsvInput, CsvPreview, CsvImportResult
 from .services.followups import ConfigurationError, lock_rule, refresh_workspace, read_workspace
+from .followup_schemas import SummaryInput, SummaryView
+from .services import ai_service
+from . import scheduler
 
-app = FastAPI(title="Payment Follow-up")
-app.add_middleware(CORSMiddleware, allow_origins=[origin.strip() for origin in os.getenv("CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173").split(",") if origin.strip()], allow_methods=["GET", "POST"], allow_headers=["Content-Type", "X-Role", "X-User-ID"])
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """FastAPI lifespan: startup and shutdown events."""
+    # Startup
+    if demo_mode_enabled():
+        logger.warning(
+            "DEMO_MODE is enabled: X-Role/X-User-Id header simulation is active. "
+            "This is NOT real authentication; never enable it on a public deployment."
+        )
+    scheduler.start_scheduler()
+    yield
+    # Shutdown
+    scheduler.stop_scheduler()
+
+logger = logging.getLogger("followup.security")
+
+ORIGIN_PATTERN = re.compile(r"^https?://[A-Za-z0-9.\-]+(:\d+)?$")
+
+
+def parse_cors_origins(raw: str) -> list[str]:
+    """Validate CORS_ORIGINS at startup; fail fast on wildcards or malformed entries."""
+    origins = [origin.strip() for origin in raw.split(",") if origin.strip()]
+    for origin in origins:
+        if not ORIGIN_PATTERN.match(origin):
+            raise RuntimeError(
+                f"Invalid CORS_ORIGINS entry: {origin!r}. "
+                "Each origin must be an explicit http(s)://host[:port] URL; wildcards are not allowed."
+            )
+    return origins
+
+
+def demo_mode_enabled() -> bool:
+    """DEMO_MODE gates the X-Role header simulation (fail-to-secure when unset)."""
+    return os.getenv("DEMO_MODE", "").strip().lower() in ("1", "true", "yes")
+
+
+def rate_limit_per_minute() -> int:
+    """Requests-per-minute per client IP; 0 or negative disables the limiter."""
+    try:
+        return int(os.getenv("RATE_LIMIT_PER_MINUTE", "1200"))
+    except ValueError:
+        return 1200
+
+
+app = FastAPI(title="Payment Follow-up", lifespan=lifespan)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=parse_cors_origins(os.getenv("CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173")),
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type", "X-Role", "X-User-ID"],
+)
+
+_rate_lock = threading.Lock()
+_rate_windows: dict[str, tuple[float, int]] = defaultdict(lambda: (0.0, 0))
+
+
+@app.middleware("http")
+async def rate_limit(request: Request, call_next):
+    """Per-IP fixed-window limiter (security review: missing rate limiting)."""
+    limit = rate_limit_per_minute()
+    if limit <= 0 or not request.url.path.startswith("/api/") or request.url.path == "/api/health":
+        return await call_next(request)
+    client = request.client.host if request.client else "unknown"
+    now = monotonic()
+    with _rate_lock:
+        start, count = _rate_windows[client]
+        if now - start >= 60.0:
+            start, count = now, 0
+        count += 1
+        _rate_windows[client] = (start, count)
+    if count > limit:
+        return JSONResponse(
+            status_code=429,
+            content={"detail": "Too many requests; slow down."},
+            headers={"Retry-After": "1"},
+        )
+    return await call_next(request)
+
 
 @app.middleware("http")
 async def security_headers(request: Request, call_next):
@@ -52,6 +137,8 @@ def get_db():
 
 def get_role(x_role: Annotated[str | None, Header()] = None,
              x_user_id: Annotated[str | None, Header()] = None):
+    if not demo_mode_enabled():
+        raise HTTPException(403, "Demo mode disabled; real authentication required")
     codes = {"Owner": "owner", "Finance": "finance"}
     if x_role not in codes:
         raise HTTPException(403, "Owner or Finance access required")
@@ -76,7 +163,7 @@ def customer(db, client):
     if rule is None:
         raise ConfigurationError("Missing company follow-up rules")
     if not valid:
-        raise ConfigurationError(f"Missing follow-up profile for customer {client.name}")
+        raise ConfigurationError("Missing follow-up profile; set one in customer settings")
     tier = profile.relationship_tier
     return dict(id=str(client.id), name=client.name, contact=client.email or client.phone or "", initials="".join(n[0] for n in client.name.split()[:2]), color="blue", graceDays=(rule.grace_days_by_tier.get(tier, 0) if rule else 0), doNotContact=profile.do_not_contact if valid else False)
 
@@ -213,7 +300,7 @@ def activity_rows(db, actor, invoice_id=None):
     query = select(ActivityLog).where(ActivityLog.company_id == COMPANY,ActivityLog.action != "followups.refreshed")
     if invoice_id is not None:
         query = query.where(ActivityLog.entity_type == "invoice",ActivityLog.entity_id == invoice_id)
-    return [dict(id=str(a.id),action=a.action,actor_id=str(a.actor_id) if a.actor_id else None,
+    return [dict(id=str(a.id),action=a.action,actor_type=a.actor_type,actor_id=str(a.actor_id) if a.actor_id else None,
         actor_name=workflow.user_name(adapter,a.actor_id),entity_type=a.entity_type,entity_id=str(a.entity_id),
         invoice_id=str(a.entity_id) if a.entity_type == "invoice" else None,created_at=a.created_at,details=a.after_state)
         for a in db.scalars(query.order_by(ActivityLog.created_at.desc(),ActivityLog.id.desc()))]
@@ -285,3 +372,111 @@ def import_invoice_csv(data: CsvInput, db: DB, role: Role):
     except Exception:
         db.rollback()
         raise
+
+@app.get('/api/invoices/export/csv')
+def export_invoices_csv_endpoint(db: DB, role: Role):
+    """Download all non-void invoices as CSV in the import template format."""
+    try:
+        content = csv_import.export_invoices_csv(db,COMPANY,adapter)
+    except SQLAlchemyError:
+        db.rollback()
+        raise HTTPException(500,'Export failed; try again.')
+    return Response(content,media_type='text/csv',headers={'Content-Disposition':f'attachment; filename="invoices-export-{date.today().isoformat()}.csv"'})
+
+@app.get('/api/milestones/unbilled')
+def list_unbilled_milestones(db: DB, role: Role):
+    """Completed milestones not yet invoiced, oldest completion first (S12)."""
+    try:
+        candidates = milestones.list_completed_unbilled(COMPANY, db, adapter)
+    except SQLAlchemyError:
+        db.rollback()
+        raise HTTPException(500,'Failed to fetch milestones; try again.')
+    except Exception as e:
+        raise HTTPException(500, 'Failed to fetch milestones; try again.') from e
+    return {"milestones": candidates, "count": len(candidates)}
+
+@app.get('/api/milestones/{milestone_id}/suggest-invoice')
+def suggest_invoice_for_milestone(milestone_id: UUID, db: DB, role: Role):
+    """Pre-filled invoice data for a completed milestone (S12)."""
+    try:
+        suggestion = milestones.suggest_invoice(milestone_id, db, adapter)
+    except ValueError as e:
+        raise HTTPException(409, str(e)) from e
+    except LookupError:
+        raise HTTPException(404, "Milestone not found") from None
+    except Exception as e:
+        raise HTTPException(500, 'Failed to generate suggestion; try again.') from e
+    return suggestion
+
+
+@app.post('/api/summaries/generate', response_model=SummaryView)
+def generate_weekly_summary(data: SummaryInput, db: DB, role: Role):
+    """Calculate the week's metrics in code and attach the narrative (S10, AI-3).
+
+    Regenerating the same week_start replaces that summary in place.
+    """
+    if data.week_end < data.week_start:
+        raise HTTPException(422, "week_end must be on or after week_start")
+    try:
+        summary_id = summary.generate_summary(COMPANY, data.week_start, data.week_end, role.id, db,
+                                              data.language, adapter)
+        commit(db)
+    except ConfigurationError as error:
+        db.rollback()
+        raise HTTPException(409, str(error)) from None
+    except (SQLAlchemyError, ValueError) as error:
+        db.rollback()
+        raise HTTPException(500, 'Failed to generate summary; try again.') from error
+    return _summary_view(db, summary_id)
+
+
+@app.get('/api/summaries/{summary_id}', response_model=SummaryView)
+def get_weekly_summary(summary_id: UUID, db: DB, role: Role):
+    """Retrieve a generated weekly summary."""
+    return _summary_view(db, summary_id)
+
+
+def _summary_view(db: DB, summary_id: UUID) -> SummaryView:
+    row = db.get(WeeklySummary, summary_id)
+    if row is None or row.company_id != COMPANY:
+        raise HTTPException(404, "Summary not found")
+    return SummaryView(id=row.id, week_start=row.week_start, week_end=row.week_end, metrics=row.metrics,
+                       narrative=row.narrative, written_by=row.written_by, generated_at=row.generated_at)
+
+
+@app.post("/api/ai-test")
+def ai_test():
+    """Test the AI/Ollama connection with a simple prompt.
+
+    Returns the AI status and a test response. If AI is unavailable,
+    it will return template mode status.
+    """
+    test_facts = {
+        "invoice_no": "TEST-001",
+        "due_date": "2024-10-01",
+        "outstanding_amount": "1000.00",
+        "currency": "RM",
+        "customer_name": "Test Customer",
+        "company_name": "Test Company",
+        "channel": "WhatsApp",
+        "language": "English",
+        "tone": "Friendly"
+    }
+
+    try:
+        body, metadata = ai_service.draft_reminder(test_facts, {})
+        return {
+            "success": True,
+            "ai_available": ai_service.AI_AVAILABLE,
+            "model": ai_service.DEFAULT_MODEL if ai_service.AI_AVAILABLE else None,
+            "mode": metadata.get("source"),
+            "response": body[:200] + "..." if len(body) > 200 else body,
+            "metadata": metadata
+        }
+    except Exception as error:
+        return {
+            "success": False,
+            "ai_available": ai_service.AI_AVAILABLE,
+            "error": str(error),
+            "error_type": type(error).__name__
+        }

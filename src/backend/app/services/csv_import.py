@@ -7,9 +7,9 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from uuid import UUID, uuid4
 from pydantic import ValidationError
-from sqlalchemy import select
+from sqlalchemy import select, func
 from ..csv_schemas import CsvPreview, CsvRow, CsvError, HEADERS, MAX_BYTES, MAX_ROWS
-from ..db.models import Invoice, ClientFollowupProfile, ActivityLog
+from ..db.models import Invoice, PaymentRecord, ClientFollowupProfile, ActivityLog
 from .invoices import InvoiceInput, create
 from .followups import lock_rule, refresh_workspace
 from .scoring import malaysia_date
@@ -114,6 +114,39 @@ def preview(db, company, adapter, text):
 class InvalidImport(ValueError):
     def __init__(self, preview):
         self.preview = preview
+
+def export_invoices_csv(db, company, adapter):
+    """Export all non-void invoices for a company using the exact import template.
+
+    Output round-trips through preview()/import_invoices(): same headers,
+    customer_id as UUID, initial_payment as the sum of recorded payments.
+    """
+    invoices = db.scalars(
+        select(Invoice)
+        .where(Invoice.company_id == company)
+        .where(Invoice.status != 'void')
+        .order_by(Invoice.issue_date.desc(), Invoice.invoice_no)
+    ).all()
+    sums = db.execute(
+        select(PaymentRecord.invoice_id, func.sum(PaymentRecord.amount))
+        .where(PaymentRecord.company_id == company)
+        .group_by(PaymentRecord.invoice_id)
+    ).all()
+    paid_by_invoice = {invoice_id: total for invoice_id, total in sums}
+    output = io.StringIO(newline='')
+    writer = csv.writer(output)
+    writer.writerow(HEADERS)
+    for invoice in invoices:
+        paid = paid_by_invoice.get(invoice.id)
+        writer.writerow([
+            invoice.invoice_no,
+            str(invoice.client_id),
+            invoice.issue_date.isoformat(),
+            invoice.due_date.isoformat(),
+            f'{invoice.total_amount:.2f}',
+            f'{paid:.2f}' if paid else '',
+        ])
+    return output.getvalue()
 
 def import_invoices(db, company, adapter, actor, text):
     lock_rule(db,company)

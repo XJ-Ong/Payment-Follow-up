@@ -4,7 +4,7 @@ The synthetic Orbyte world
 This is data only: MockOrbyteAdapter loads it at construction.
 
 World: 1 company (Maju Jaya Enterprise), 5 users (Owner/Finance/Backup Finance/Other/
-Other), 10 clients, 6 projects, 3 milestones (MLS-02/03 are the S12
+Other), 10 clients, 6 projects, 4 milestones (MLS-02/03 are the S12
 auto-suggest candidates), 1 leave record and 2 public holidays.
 
 Conventions (same as app/db/demo_data.py):
@@ -229,6 +229,16 @@ FIXTURE = {
             "amount": "6500.00",
             "due_offset_days": -2,
             "completed_offset_days": 0,
+        },
+
+        # Not completed — must never appear as a billing candidate.
+        {
+            "id": "MLS-04",
+            "project_id": "PRJ-01",
+            "name": "Final Handover & Defects Liability",
+            "amount": "20000.00",
+            "due_offset_days": 30,
+            "completed_offset_days": None,
         },
     ],
 

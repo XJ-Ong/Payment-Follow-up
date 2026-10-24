@@ -17,6 +17,10 @@ class InvoiceInput(BaseModel):
     due_date: date
     total_amount: Money
     initial_payment: Decimal = Field(default=Decimal('0'), ge=0, max_digits=12, decimal_places=2)
+    # Milestone-sourced invoice linkage (S12); None for manual/CSV entry.
+    project_id: UUID | None = None
+    milestone_id: UUID | None = None
+    source: Literal['manual', 'csv', 'milestone'] = 'manual'
 
     @model_validator(mode='after')
     def validate_dates_and_payment(self):
@@ -54,14 +58,18 @@ def add_payment(db, company, invoice, data, actor):
     db.flush()
     audit(db,company,actor,'payment.recorded',invoice)
 
-def create(db, company, adapter, actor, data, source='manual'):
+def create(db, company, adapter, actor, data, source=None):
     try:
         client = adapter.get_client(data.client_id)
     except LookupError:
         raise HTTPException(422,'Unknown customer') from None
     if client.company_id != company:
         raise HTTPException(422,'Unknown customer')
-    invoice = Invoice(id=uuid4(),company_id=company,client_id=data.client_id,invoice_no=data.invoice_no,issue_date=data.issue_date,due_date=data.due_date,total_amount=data.total_amount,source=source,status='open')
+    # Explicit source argument (e.g. csv import) wins; else trust the input,
+    # else infer milestone source from linkage.
+    if source is None:
+        source = data.source if data.source != 'manual' or data.milestone_id is None else 'milestone'
+    invoice = Invoice(id=uuid4(),company_id=company,client_id=data.client_id,project_id=data.project_id,milestone_id=data.milestone_id,invoice_no=data.invoice_no,issue_date=data.issue_date,due_date=data.due_date,total_amount=data.total_amount,source=source,status='open')
     db.add(invoice)
     db.flush()
     if data.initial_payment:
