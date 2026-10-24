@@ -13,7 +13,7 @@ from sqlalchemy import func, select, text
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from .db.models import Invoice, PaymentRecord, ClientFollowupProfile, FollowupRule, ActivityLog
+from .db.models import Invoice, PaymentRecord, ClientFollowupProfile, FollowupRule, ActivityLog, WeeklySummary
 from .db.session import SessionLocal
 from .ids import external_uuid
 from .orbyte.mock import MockOrbyteAdapter
@@ -23,10 +23,11 @@ from .services import workflow
 from .followup_schemas import WorkspaceView, RuleView, SettingsSaveView
 from .settings_schemas import ProfileInput, ProfileView, RulesInput
 from .services import settings
-from .services import invoices as invoice_ops, csv_import, milestones
+from .services import invoices as invoice_ops, csv_import, milestones, summary
 from .services.invoices import InvoiceInput, PaymentInput
 from .csv_schemas import CsvInput, CsvPreview, CsvImportResult
 from .services.followups import ConfigurationError, lock_rule, refresh_workspace, read_workspace
+from .followup_schemas import SummaryInput, SummaryView
 
 app = FastAPI(title="Payment Follow-up")
 app.add_middleware(CORSMiddleware, allow_origins=[origin.strip() for origin in os.getenv("CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173").split(",") if origin.strip()], allow_methods=["GET", "POST"], allow_headers=["Content-Type", "X-Role", "X-User-ID"])
@@ -320,3 +321,38 @@ def suggest_invoice_for_milestone(milestone_id: UUID, db: DB, role: Role):
     except Exception as e:
         raise HTTPException(500, f"Failed to generate suggestion: {e}") from e
     return suggestion
+
+
+@app.post('/api/summaries/generate', response_model=SummaryView)
+def generate_weekly_summary(data: SummaryInput, db: DB, role: Role):
+    """Calculate the week's metrics in code and attach the narrative (S10, AI-3).
+
+    Regenerating the same week_start replaces that summary in place.
+    """
+    if data.week_end < data.week_start:
+        raise HTTPException(422, "week_end must be on or after week_start")
+    try:
+        summary_id = summary.generate_summary(COMPANY, data.week_start, data.week_end, role.id, db,
+                                              data.language, adapter)
+        commit(db)
+    except ConfigurationError as error:
+        db.rollback()
+        raise HTTPException(409, str(error)) from None
+    except (SQLAlchemyError, ValueError) as error:
+        db.rollback()
+        raise HTTPException(500, f"Failed to generate summary: {error}") from error
+    return _summary_view(db, summary_id)
+
+
+@app.get('/api/summaries/{summary_id}', response_model=SummaryView)
+def get_weekly_summary(summary_id: UUID, db: DB, role: Role):
+    """Retrieve a generated weekly summary."""
+    return _summary_view(db, summary_id)
+
+
+def _summary_view(db: DB, summary_id: UUID) -> SummaryView:
+    row = db.get(WeeklySummary, summary_id)
+    if row is None or row.company_id != COMPANY:
+        raise HTTPException(404, "Summary not found")
+    return SummaryView(id=row.id, week_start=row.week_start, week_end=row.week_end, metrics=row.metrics,
+                       narrative=row.narrative, written_by=row.written_by, generated_at=row.generated_at)
