@@ -7,7 +7,7 @@ import pytest
 from alembic import command
 from alembic.config import Config
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, text, insert, inspect
 from sqlalchemy.orm import Session
 from app.main import app, get_db, COMPANY
 from app.db.session import engine as source_engine
@@ -18,8 +18,11 @@ from app.ids import external_uuid
 
 def seed_reference(engine):
     with Session(engine) as db:
-        db.add(FollowupRule(id=uuid4(), company_id=COMPANY, grace_days_by_tier={k.title(): v for k,v in RULES["grace_days"].items()},
-            alert_threshold=RULES["alert_threshold"], safety_flag_days=RULES["safety_flag_days"], min_spacing_days=RULES["min_days_between_reminders"], second_approval_amount=RULES["second_approval_amount"], skip_holidays=False, primary_approver_id=external_uuid("USR-02"), backup_approver_id=external_uuid("USR-01")))
+        values = dict(id=uuid4(), company_id=COMPANY, grace_days_by_tier={k.title(): v for k,v in RULES["grace_days"].items()},
+            alert_threshold=RULES["alert_threshold"], safety_flag_days=RULES["safety_flag_days"], min_spacing_days=RULES["min_days_between_reminders"], second_approval_amount=RULES["second_approval_amount"], skip_holidays=False, primary_approver_id=external_uuid("USR-02"), backup_approver_id=external_uuid("USR-01"))
+        if "owner_approver_id" in {c["name"] for c in inspect(engine).get_columns("followup_rule")}:
+            values.update(backup_approver_id=external_uuid("USR-05"),owner_approver_id=external_uuid("USR-01"))
+        db.execute(insert(FollowupRule.__table__).values(**values))
         for row in CLIENT_PROFILES:
             db.add(ClientFollowupProfile(client_id=external_uuid(row["client_id"]), company_id=COMPANY, relationship_tier=row["tier"].title(), preferred_channel={"email": "Email", "whatsapp": "WhatsApp"}[row["preferred_channel"]], language={"en": "English", "bm": "Bahasa Malaysia"}[row["language"]], tone=row["tone"].title(), do_not_contact=row["do_not_contact"]))
         db.commit()

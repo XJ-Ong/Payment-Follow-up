@@ -63,7 +63,7 @@ def test_existing_baseline():
         command.upgrade(config, "head")
         with engine.connect() as c:
             assert c.scalar(text("SELECT invoice_no FROM invoice")) == "KEEP-ME"
-            assert c.scalar(text("SELECT version_num FROM alembic_version")) == "0002"
+            assert c.scalar(text("SELECT version_num FROM alembic_version")) == "0004"
 
 
 def test_schema_drift():
@@ -115,7 +115,7 @@ def test_browser_persistence(database):
     now = datetime.now(timezone.utc)
     today = malaysia_date(now)
     with Session(engine) as session:
-        for number, client, total in [("QUEUE-TOP", "CLI-01", "2500"), ("QUEUE-DNC", "CLI-07", "5000"), ("QUEUE-SPACED", "CLI-01", "3000"), ("QUEUE-SAFETY", "CLI-01", "500")]:
+        for number, client, total in [("QUEUE-TOP", "CLI-01", "2500"), ("QUEUE-DNC", "CLI-07", "5000"), ("QUEUE-SPACED", "CLI-01", "3000"), ("QUEUE-SAFETY", "CLI-01", "500"), ("WF-STANDARD", "CLI-01", "1000"), ("WF-HIGH", "CLI-01", "30000"), ("WF-LEAVE", "CLI-01", "30000"), ("WF-INVALID", "CLI-01", "1000")]:
             row = Invoice(id=uuid4(), company_id=COMPANY, client_id=external_uuid(client), invoice_no=number, issue_date=today-timedelta(days=60), due_date=today-timedelta(days=40), total_amount=Decimal(total), source="manual", status="open")
             session.add(row)
             session.flush()
@@ -130,8 +130,18 @@ def test_browser_persistence(database):
             yield session
     app.dependency_overrides[get_db] = db
     from fastapi.middleware.cors import CORSMiddleware
+    from fastapi import FastAPI
+    from app.orbyte.mock import MockOrbyteAdapter
+    import app.main as main
+    original_adapter = main.adapter
+    harness = FastAPI()
+    @harness.post("/__test/leave")
+    def change_leave(flags: dict):
+        main.adapter = MockOrbyteAdapter(demo_leave_active=flags.get("finance",False),demo_owner_leave_active=flags.get("owner",False),reference_date=today)
+        return {"ok":True}
+    harness.mount("/", app)
     # The test frontend has its own origin; production origins remain environment configured.
-    test_app = CORSMiddleware(app, allow_origins=["http://127.0.0.1:5188"], allow_methods=["GET", "POST"], allow_headers=["X-Role", "Content-Type"])
+    test_app = CORSMiddleware(harness, allow_origins=["http://127.0.0.1:5188"], allow_methods=["GET", "POST"], allow_headers=["X-Role", "X-User-ID", "Content-Type"])
     server = uvicorn.Server(uvicorn.Config(test_app, host="127.0.0.1", port=8001, log_level="warning"))
     thread = threading.Thread(target=server.run, daemon=True)
     thread.start()
@@ -163,3 +173,4 @@ def test_browser_persistence(database):
         server.should_exit = True
         thread.join(timeout=10)
         app.dependency_overrides.clear()
+        main.adapter = original_adapter

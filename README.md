@@ -155,7 +155,7 @@ npm install
 npm run dev
 ```
 
-Set `VITE_API_URL=http://localhost:8000` and `VITE_DATA_MODE=api`. Restart Vite after changing environment variables. Backend `CORS_ORIGINS` is a comma-separated list of allowed local frontend origins. For a standalone template preview use `VITE_DATA_MODE=demo`; those template edits are not persisted. API mode saves invoices/payments and uses the current Malaysia date. Saved follow-up rules are read-only in API mode. Scoring, dashboard alerts and queue eligibility are calculated and saved by the backend; durable reminder workflow, dual approvals and dispatch remain future integration work.
+Set `VITE_API_URL=http://localhost:8000` and `VITE_DATA_MODE=api`. Restart Vite after changing environment variables. Backend `CORS_ORIGINS` is a comma-separated list of allowed local frontend origins. For a standalone template preview use `VITE_DATA_MODE=demo`; those template edits are not persisted. API mode saves invoices/payments and uses the current Malaysia date. Saved follow-up rules are read-only in API mode. Scoring, dashboard alerts and queue eligibility are calculated and saved by the backend; saved reminder versions, Finance/Owner approvals and simulated dispatch are now connected; AI and scheduled automation remain future work.
 
 ### Production security headers
 
@@ -232,7 +232,7 @@ npm install
 npm run dev
 ```
 
-Set `VITE_API_URL=http://localhost:8000` and `VITE_DATA_MODE=api`. Restart Vite after changing environment variables. Backend `CORS_ORIGINS` is a comma-separated list of allowed local frontend origins. For a standalone template preview use `VITE_DATA_MODE=demo`; those template edits are not persisted. API mode saves invoices/payments and uses the current Malaysia date. Saved follow-up rules are read-only in API mode. Scoring, dashboard alerts and queue eligibility are calculated and saved by the backend; durable reminder workflow, dual approvals and dispatch remain future integration work.
+Set `VITE_API_URL=http://localhost:8000` and `VITE_DATA_MODE=api`. Restart Vite after changing environment variables. Backend `CORS_ORIGINS` is a comma-separated list of allowed local frontend origins. For a standalone template preview use `VITE_DATA_MODE=demo`; those template edits are not persisted. API mode saves invoices/payments and uses the current Malaysia date. Saved follow-up rules are read-only in API mode. Scoring, dashboard alerts and queue eligibility are calculated and saved by the backend; saved reminder versions, Finance/Owner approvals and simulated dispatch are now connected; AI and scheduled automation remain future work.
 
 ### API contract
 
@@ -284,64 +284,107 @@ Module Progress
 ✅ Priority scoring & daily queue
 🟡 Customer profiles
 🟡 Rules & settings
-🟡 Reminder drafts
-🟡 Approve, skip & snooze
-🟡 Activity log
-🟡 Simulated outbox
+✅ Reminder drafts
+✅ Approve, skip & snooze
+✅ Activity log
+✅ Simulated outbox
 🟡 Weekly summary
-🟡 English/Bahasa Malaysia reminders
+✅ English/Bahasa Malaysia template reminders
 ❌ CSV import/export
 ❌ Milestone invoice suggestions
-❌ Backup approval during leave
-❌ Two-person high-value approval
+✅ Backup Finance approval during leave
+✅ Two-person high-value approval
 ✅ Holiday-aware overdue calculation
 ❌ AI drafting, explanations & summaries
 ❌ Scheduled automation
 
-## Scoring, alerts and daily queue milestone
+## Saved reminders and approval workflow
 
-Apply `uv run alembic upgrade head` in `src/backend` before starting the API. Revision `0002` adds saved eligibility/calculation fields, makes rank optional for unranked invoices, widens score capacity and prevents duplicate alerts for the same snapshot, recipient and channel. Existing invoice/payment records are preserved. Conflicting duplicate legacy alerts cause migration to stop for review, rather than deleting history.
+Run `uv run alembic upgrade head` from `src/backend` before starting the API. Revision `0003` preserves invoice, payment, draft, approval and send history. It restores the existing draft-author mapping, adds immutable fact/policy snapshots and version supersession, adds invoice skip/snooze deadlines, and enforces one current draft per invoice plus distinct approvers per new version. Database triggers reject changes to saved message content and existing approval decisions. Legacy drafts/approvals remain explicitly historical and cannot be dispatched through the new workflow.
 
-### Policy
+Revision `0004` adds an explicit latest-workspace event pointer, updated under the same company lock. Saved readback follows transaction order even when refresh timestamps are identical; older records remain unchanged.
 
-- Reference dates use `Asia/Kuala_Lumpur`; timestamps are timezone-aware.
-- Outstanding = max(0, invoice total - recorded payments).
-- Overdue days = days after the due date through the reference date. Optional holiday mode excludes distinct adapter-supplied public holidays in this interval. Weekends still count. Holiday mode defaults to off.
-- Effective days = max(0, overdue days - tier grace). Score = outstanding x effective days, in RM-days.
-- Threshold alert: score **at least** the configured threshold. Safety alert: overdue days **at least** the configured safety age. Both triggers can apply; the safety rule can trigger even while inside a longer grace period.
-- Queue = alert-triggered invoices that are overdue, have a positive balance, are not paid/void, allow contact, and meet reminder spacing. Spacing is **per invoice**, using its latest simulated send date in Malaysia time. Exactly the configured spacing passes.
-- Rankings include unpaid overdue invoices even when contact or spacing blocks the queue. Order: score descending, overdue days descending, invoice number ascending, UUID ascending. Paid, future and void invoices remain accessible under Invoices & Payments but have no active rank.
-- Dashboard totals exclude void invoices and include do-not-contact balances. The backend returns customer balances, scores, ranks, eligibility and explanations; frontend local rule previews cannot override API-mode calculations.
-- Missing company rules, incomplete grace configuration, missing customer profiles or an invalid primary approver return a configuration error (409). These errors roll back invoice/payment writes too.
+The known synthetic default routing is migrated to primary Finance **Encik Razak**, backup Finance **Puan Nadia**, and Owner **Puan Farah**. Other routing configurations are preserved; custom companies must configure distinct company-scoped Finance/backup Finance/Owner users before using the workflow. Rules remain read-only in the current UI.
 
-Default seed rules: New/Regular/Key grace 0/7/14 days, threshold 50,000 RM-days, safety age 30 days, spacing five days. These are configurable demo assumptions, not researched business rules. Rules are read-only in the API UI for this milestone.
+### Policy and lifecycle
 
-### Worked examples
+1. Open an eligible queue invoice and choose **Create template draft**. Saved customer channel, language and tone select a deterministic English/Bahasa Malaysia template. No AI is called.
+2. **Save new version** creates immutable content and facts, superseding the old version. The required invoice number, due date, exact outstanding balance and company name must remain in the text. Unsaved edits must be saved before submitting, approving or sending.
+3. **Submit for Finance approval** routes the current version to primary Finance, or backup Finance during primary Finance's approved leave. Finance may approve a draft it prepared.
+4. Outstanding balance **strictly above** the configured threshold (seed: MYR 20,000) requires a distinct Owner approval after Finance. Exactly MYR 20,000 requires only Finance. The policy is captured with the version and revalidated at submission/review; a changed policy or financial/contact facts invalidates the journey and requires a fresh version.
+5. Editing after an approval closes the old version and starts Finance review again. **Edit and approve new version** is available only to the currently assigned first Finance approver; it never transfers the old version's approvals.
+6. Owner leave leaves a high-value reminder waiting. Backup Finance never substitutes for Owner.
+7. Final approval exposes an approved preview. **Simulate send** separately rechecks current facts, balance, status, contact suppression, per-invoice spacing and exact version-bound approvals. The outbox records the approved body and recipient atomically; repeated sends create no duplicates. Nothing is delivered externally.
 
-| Invoice scenario | Calculation | Result |
-|---|---|---|
-| MYR 2,500 outstanding, 40 days overdue, New tier | 2,500 x (40 - 0) = 100,000 | Both rules; queue if contact/spacing permit |
-| MYR 500 outstanding, 40 days overdue, New tier | 500 x 40 = 20,000 | Safety rule only; queue if eligible |
-| MYR 10,000 outstanding, 5 days overdue, Regular tier | 10,000 x max(0, 5 - 7) = 0 | No alert; outside queue |
-| First scenario, last sent two days ago | Same score; five-day spacing fails | Ranked with exclusion reason; outside queue |
-| First scenario, do-not-contact customer | Same score; contact check fails | Ranked and included in balances; outside queue |
-| Invoice paid in full | Outstanding and score become zero | Retained snapshot, no active rank or queue entry |
+Active journeys leave Today's Queue and remain accessible through **Reminder Workflow** and **Invoices & Payments**. Rankings retain them with a workflow exclusion reason. Full or partial payments and changed recipient/policy/eligibility invalidate active journeys during refresh; their old approvals remain historical. A sent invoice can return after its configured reminder spacing if it still qualifies.
 
-### Follow-up API
+**Skip today** and **Snooze** close the current journey and its approval validity. Skip expires at the next Malaysia midnight; snooze expires at midnight on the chosen future Malaysia date. Expiry allows ordinary queue eligibility to be checked again and requires a new draft/approvals. These changes persist across reloads.
 
-- `POST /api/followups/refresh`: calculate and persist today's results, then return the typed workspace. No request body is required.
-- `GET /api/followups`: read the last successful saved workspace without creating records. Before the first successful refresh, returns an empty workspace with `computed_at: null`.
-- Both require `X-Role: Owner` or `Finance`. Existing invoice/payment endpoints remain available and refresh eligibility inside their write transactions.
-- The workspace contains `as_of_date`, `computed_at`, `customers`, `invoices` with `calculation`, `rules`, `dashboard`, `queue_ids` and `alerts`. Money and score values are decimal strings; dates are ISO dates. GET returns the saved reference date, which may be earlier than today until refreshed.
+### Demo identities and leave
 
-Snapshots are refreshed in place for the current Malaysia date; earlier dates are preserved. Current-day snapshots also retain paid/ineligible invoices with null ranks. Company rule-row locking serializes refreshes and invoice/payment writes. Each successful refresh appends an audit event containing the saved workspace for consistent readback, including empty datasets. Failures keep the last successful workspace intact.
+`X-Role` remains the simulated role switch. Optional `X-User-ID` selects a concrete mock identity and must match both the role and company. Omitting it keeps the existing default Owner/primary Finance identities. This is demo identity, not real authentication. The Finance user selector exposes primary and backup users; authorship, payments and audit events use the selected user.
 
-Dashboard alerts go to the configured primary approver; leave routing is deferred. Refresh preserves existing alert decisions. It updates current trigger details and dismisses active alerts that lose eligibility, belong to an earlier date or have an outdated recipient. It does not reopen an already dismissed/actioned decision; queue eligibility is separate from alert acknowledgement. No email, WhatsApp or reminder dispatch is performed.
+To exercise approved-leave fixtures, set these backend variables in the root `.env` and restart the API:
 
-Initial API-mode load, Refresh now and successful invoice/payment writes use the backend workspace. Dashboard shows rankings and active alerts; Today's Queue uses eligibility instead of approval status. Calculation details show exclusions and holiday/spacing inputs. Standalone `VITE_DATA_MODE=demo` remains a local template preview.
+```env
+DEMO_FINANCE_LEAVE=true
+DEMO_OWNER_LEAVE=false
+```
 
-### Verification
+With Finance leave enabled, submit a reminder, select **Puan Nadia (Backup Finance)** and approve as that user. Set Owner leave to true to verify that high-value reminders wait after Finance approval. Leave fixtures cover the adapter's startup reference date from one day before through two days after; restart to reset a demo scenario. Real leave data would come from the Orbyte adapter.
 
-The backend suite covers scoring boundaries, holiday/weekend/year boundaries, Malaysia midnight, per-invoice spacing, duplicate/concurrent refreshes, alert decisions, historical snapshots, transactional rollback, migration compatibility, permissions and company isolation. With `RUN_BROWSER_TESTS=1`, it also runs real API browser checks for payment persistence, rankings, suppression reasons and queue removal after payment/reload. Template browser screenshots are written to ignored `test-results/` so tests do not overwrite reference artwork.
+### Workflow API
 
-Saved reminder drafting, version-bound approvals, leave routing, two-person approval, simulated dispatch, AI and scheduled refresh jobs remain subsequent milestones. Refresh is manual/on-load/on-write; there is no automatic daily scheduler yet.
+- `GET /api/users`: available company Owner/Finance demo users and default identity flags.
+- `POST /api/invoices/{invoice_id}/drafts`: create an eligible template draft.
+- `GET /api/invoices/{invoice_id}/drafts`: immutable version history with authors and decisions.
+- `POST /api/drafts/{draft_id}/{action}`: actions `versions`, `submit`, `approve`, `edit-approve`, `skip`, `snooze`, `send`.
+- Every version action requires `{ "version": 1 }` for the exact current version; edits also require `body`, suppression accepts `reason`, and snooze requires `snooze_until` as an ISO date. Stale versions/conflicting states return 409, unauthorized identities/assignments return 403, and invalid content/dates return 422.
+- `GET /api/outbox`, `GET /api/activity`, `GET /api/invoices/{invoice_id}/timeline`: company-scoped saved dispatches and activity.
+- Follow-up workspaces now include each invoice's `workflow`, current/latest version, assignment, suppression deadline and actor-specific `allowed_actions`. Financial status remains separate. Permissions are recomputed for the requesting identity rather than trusting the permissions in a prior saved workspace.
+
+Blocked sends create audit events and no dispatch. Missing configuration also blocks sending. Other failed conflicting edits are rolled back. All writes share the existing company rule-row lock, so approval, payment, version and dispatch races cannot bypass the workflow.
+
+### Run and verify
+
+```powershell
+# Backend terminal
+cd src/backend
+uv sync
+uv run alembic upgrade head
+uv run uvicorn app.main:app --reload --port 8000
+# Frontend terminal, from the repository root
+npm run dev
+```
+
+Use API mode (`VITE_DATA_MODE=api`). Start with Queue -> Create template draft -> Reminder Workflow -> Finance approval -> Owner approval when required -> approved preview -> Simulate send -> Simulated Outbox/Activity Log. Reload between steps to verify persistence. Standalone demo mode keeps the original template behavior.
+
+```powershell
+# From src/backend
+uv run pytest tests -q
+$env:RUN_BROWSER_TESTS='1'
+uv run pytest tests -q -s
+# From repository root
+npm test
+npm run build
+$env:PLAYWRIGHT_CHANNEL='msedge'
+npm run test:e2e
+```
+
+Tests use isolated temporary databases. The leave-control endpoint used by browser tests is registered only on the test harness, never on the production API. AI, real Email/WhatsApp delivery, automatic scheduling, CSV/milestones and full weekly reporting remain outside this milestone.
+
+
+Verification for this milestone: 75 backend unit/integration tests, nine frontend model tests, five API browser journeys (including the mobile workflow drawer), and the standalone template regression suite. Fresh seed/reset is tested in a temporary database, including reapplying migrations when immutability functions already exist. Migration checks report no ungenerated schema changes. The development database retains 21 invoices, eight payments and its three existing draft/approval/send records each.
+
+
+### Follow-ups workspace
+
+In API mode, open **Follow-ups** to work through **Ready > Drafts > Awaiting approval > Ready to send > Sent**. **Deferred** contains active skips and snoozes. Stage counts and permissions come from saved backend results; Sent shows saved simulated dispatches, including historical records.
+
+Select the demo identity at the top of the workspace. Open a reminder to see its progress, next responsible person and primary action. Save edits as a new version before submitting; editing reviewed content resets approvals. Standard reminders require Finance; reminders above MYR 20,000 require Finance then a distinct Owner. Approval remains separate from **Simulate send**.
+
+The reminder stays open after each transition. Closing returns to its current stage. Use **More actions** for skip/snooze, and expand **Invoice, payment and calculation details** to record a payment or inspect scoring. Payment-driven invalidation and blocked eligibility explain why an action is unavailable. Saved receipts, versions and activity remain available after reload. Standalone demo navigation is unchanged.
+
+UX verification: 75 backend regression tests passed (browser wrapper skipped in the default run), 9 frontend unit tests passed, 7 API browser journeys passed, 4 standalone demo browser tests passed, and the production build and changed-file formatting checks passed. Browser coverage includes sent receipts/history, stage transitions, Finance/Owner approval, leave routing, payment invalidation, skip/snooze across reload, failed-save text retention, keyboard tabs and mobile containment.
+
+Temporary testing helper: when running the Vite development app in API mode, Owner and Finance can click **Add test data** beside Demo identity. With the seeded defaults this adds seven uniquely prefixed TEST invoices: standard, high value, exact approval threshold, partial payment, paid, future due and do-not-contact. Existing records are kept; every click adds a fresh batch through the ordinary invoice/payment APIs. Dates use the loaded Malaysia reference date and overdue examples account for saved grace/safety rules. The app opens Follow-ups > Ready after adding them; paid/future/blocked examples remain in Invoices & Payments. The helper is hidden from production builds and standalone demo mode. If a request fails partway, the notification reports how many invoices were saved.

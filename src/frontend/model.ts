@@ -1,3 +1,4 @@
+import type { Workflow } from './workflowTypes';
 export const REFERENCE_DATE = '2026-10-22';
 export type Role = 'Owner' | 'Finance' | 'Other Staff';
 export const roles: Role[] = ['Owner', 'Finance', 'Other Staff'];
@@ -35,6 +36,7 @@ export type FollowupCalculation = {
   reason: string;
 };
 export type Invoice = {
+  workflow?: Workflow;
   calculation?: FollowupCalculation;
   databaseId?: string;
   customer?: Customer;

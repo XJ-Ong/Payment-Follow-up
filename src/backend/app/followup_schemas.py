@@ -3,6 +3,7 @@ from datetime import date, datetime
 from typing import Literal
 from uuid import UUID
 from pydantic import BaseModel
+from .workflow_schemas import WorkflowView
 
 class CustomerView(BaseModel):
     id: UUID
@@ -20,6 +21,9 @@ class RuleView(BaseModel):
     min_spacing_days: int
     skip_holidays: bool
     primary_approver_id: UUID
+    backup_approver_id: UUID | None = None
+    owner_approver_id: UUID | None = None
+    second_approval_amount: str | None = None
 
 class CalculationView(BaseModel):
     outstanding_amount: str
@@ -45,6 +49,7 @@ class InvoiceView(BaseModel):
     payments: str
     outstanding_amount: str
     status: str
+    workflow: WorkflowView | None = None
     calculation: CalculationView
 
 class AlertView(BaseModel):

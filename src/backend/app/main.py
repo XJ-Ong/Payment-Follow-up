@@ -18,11 +18,14 @@ from .db.models import Invoice, PaymentRecord, ClientFollowupProfile, FollowupRu
 from .db.session import SessionLocal
 from .ids import external_uuid
 from .orbyte.mock import MockOrbyteAdapter
+from .orbyte.schemas import AppUser
+from .workflow_schemas import DraftMutation, DraftView, OutboxView, ActivityView, WorkflowView
+from .services import workflow
 from .followup_schemas import WorkspaceView
 from .services.followups import ConfigurationError, lock_rule, refresh_workspace, read_workspace
 
 app = FastAPI(title="Payment Follow-up")
-app.add_middleware(CORSMiddleware, allow_origins=[origin.strip() for origin in os.getenv("CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173").split(",") if origin.strip()], allow_methods=["GET", "POST"], allow_headers=["Content-Type", "X-Role"])
+app.add_middleware(CORSMiddleware, allow_origins=[origin.strip() for origin in os.getenv("CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173").split(",") if origin.strip()], allow_methods=["GET", "POST"], allow_headers=["Content-Type", "X-Role", "X-User-ID"])
 
 @app.middleware("http")
 async def security_headers(request: Request, call_next):
@@ -37,21 +40,28 @@ async def security_headers(request: Request, call_next):
     return response
 
 COMPANY = external_uuid("COMP-01")
-adapter = MockOrbyteAdapter()
+adapter = MockOrbyteAdapter(demo_leave_active=os.getenv("DEMO_FINANCE_LEAVE", "").lower() == "true", demo_owner_leave_active=os.getenv("DEMO_OWNER_LEAVE", "").lower() == "true")
 
 def get_db():
     with SessionLocal() as session:
         yield session
 
-def get_role(x_role: Annotated[str | None, Header()] = None):
-    if x_role not in ("Owner", "Finance", "Other Staff"):
-        raise HTTPException(403, "Unsupported or missing demo role")
-    if x_role == "Other Staff":
+def get_role(x_role: Annotated[str | None, Header()] = None,
+             x_user_id: Annotated[str | None, Header()] = None):
+    codes = {"Owner": "owner", "Finance": "finance"}
+    if x_role not in codes:
         raise HTTPException(403, "Owner or Finance access required")
-    return x_role
+    try:
+        user_id = UUID(x_user_id) if x_user_id else external_uuid("USR-01" if x_role == "Owner" else "USR-02")
+        actor = adapter.get_user(user_id)
+    except (ValueError, LookupError):
+        raise HTTPException(403, "Unknown demo user") from None
+    if actor.company_id != COMPANY or actor.role != codes[x_role]:
+        raise HTTPException(403, "Demo user does not match the role or company")
+    return actor
 
 DB = Annotated[Session, Depends(get_db)]
-Role = Annotated[str, Depends(get_role)]
+Role = Annotated[AppUser, Depends(get_role)]
 Money = Annotated[Decimal, Field(gt=0, max_digits=12, decimal_places=2)]
 
 class InvoiceInput(BaseModel):
@@ -96,7 +106,7 @@ def serialize(db, invoice):
     return dict(id=str(invoice.id), invoice_no=invoice.invoice_no, client_id=str(invoice.client_id), issue_date=invoice.issue_date.isoformat(), due_date=invoice.due_date.isoformat(), total_amount=format(invoice.total_amount, ".2f"), payments=format(payments, ".2f"), outstanding_amount=format(max(Decimal("0.00"), invoice.total_amount-payments), ".2f"), status=invoice.status)
 
 def audit(db, role, action, invoice):
-    db.add(ActivityLog(id=uuid4(), company_id=COMPANY, actor_type="user", actor_id=external_uuid("USR-01" if role == "Owner" else "USR-02"), action=action, entity_type="invoice", entity_id=invoice.id, after_state=serialize(db, invoice)))
+    db.add(ActivityLog(id=uuid4(), company_id=COMPANY, actor_type="user", actor_id=role.id, action=action, entity_type="invoice", entity_id=invoice.id, after_state=serialize(db, invoice)))
 
 def commit(db):
     try:
@@ -137,7 +147,7 @@ def create_invoice(data: InvoiceInput, db: DB, role: Role):
     if data.initial_payment:
         add_payment(db, invoice, PaymentInput(amount=data.initial_payment, received_date=data.issue_date, payment_type="deposit"), role)
     audit(db, role, "invoice.created", invoice)
-    refresh_workspace(db, COMPANY, adapter, external_uuid("USR-01" if role == "Owner" else "USR-02"))
+    refresh_workspace(db, COMPANY, adapter, role.id)
     commit(db)
     return serialize(db, invoice)
 
@@ -147,7 +157,7 @@ def add_payment(db, invoice, data, role):
         raise HTTPException(422, "Payment exceeds outstanding balance or invoice is void")
     if data.payment_type == "full" and data.amount != balance:
         raise HTTPException(422, "Full payment must equal outstanding balance")
-    db.add(PaymentRecord(id=uuid4(), company_id=COMPANY, invoice_id=invoice.id, amount=data.amount, received_date=data.received_date, payment_type=data.payment_type, reference_number=data.reference_number, recorded_by=external_uuid("USR-01" if role == "Owner" else "USR-02")))
+    db.add(PaymentRecord(id=uuid4(), company_id=COMPANY, invoice_id=invoice.id, amount=data.amount, received_date=data.received_date, payment_type=data.payment_type, reference_number=data.reference_number, recorded_by=role.id))
     invoice.status = "paid" if data.amount == balance else "partially_paid"
     db.flush()
     audit(db, role, "payment.recorded", invoice)
@@ -159,7 +169,7 @@ def record_payment(invoice_id: UUID, data: PaymentInput, db: DB, role: Role):
     if invoice is None:
         raise HTTPException(404, "Invoice not found")
     add_payment(db, invoice, data, role)
-    refresh_workspace(db, COMPANY, adapter, external_uuid("USR-01" if role == "Owner" else "USR-02"))
+    refresh_workspace(db, COMPANY, adapter, role.id)
     commit(db)
     return serialize(db, invoice)
 
@@ -171,11 +181,98 @@ async def configuration_error(request: Request, error: ConfigurationError):
 
 @app.get("/api/followups", response_model=WorkspaceView)
 def followups(db: DB, role: Role):
-    return read_workspace(db, COMPANY)
+    return personalize(db, read_workspace(db, COMPANY), role)
 
 
 @app.post("/api/followups/refresh", response_model=WorkspaceView)
 def refresh_followups(db: DB, role: Role):
-    result = refresh_workspace(db, COMPANY, adapter, external_uuid("USR-01" if role == "Owner" else "USR-02"))
+    result = refresh_workspace(db, COMPANY, adapter, role.id)
     commit(db)
+    return personalize(db, result, role)
+
+
+def personalize(db, workspace, actor):
+    result = workspace.model_copy(deep=True)
+    views = workflow.workflow_views(db, COMPANY, adapter, actor)
+    for invoice in result.invoices:
+        if invoice.id in views:
+            invoice.workflow = WorkflowView.model_validate(views[invoice.id])
     return result
+
+
+@app.get("/api/users")
+def users(role: Role):
+    return [{"id": str(u.id), "name": u.name, "role": u.role, "is_default": u.id == external_uuid("USR-01" if u.role == "owner" else "USR-02")} for u in sorted(adapter.list_users(COMPANY), key=lambda u: str(u.id)) if u.role in ("owner", "finance")]
+
+
+@app.post("/api/invoices/{invoice_id}/drafts", response_model=DraftView, status_code=201)
+def create_reminder(invoice_id: UUID, db: DB, role: Role):
+    try:
+        draft = workflow.create_draft(db, COMPANY, adapter, role, invoice_id)
+        refresh_workspace(db, COMPANY, adapter, role.id)
+        result = workflow.draft_view(db,draft,adapter,role)
+        commit(db)
+        return result
+    except workflow.WorkflowError as error:
+        db.rollback()
+        raise HTTPException(error.code,str(error)) from None
+
+
+@app.get("/api/invoices/{invoice_id}/drafts", response_model=list[DraftView])
+def reminder_versions(invoice_id: UUID, db: DB, role: Role):
+    invoice = db.scalar(select(Invoice).where(Invoice.company_id == COMPANY,Invoice.id == invoice_id))
+    if invoice is None:
+        raise HTTPException(404,"Invoice not found")
+    drafts = db.scalars(select(workflow.ReminderDraft).where(workflow.ReminderDraft.company_id == COMPANY,workflow.ReminderDraft.invoice_id == invoice_id).order_by(workflow.ReminderDraft.version.desc())).all()
+    return [workflow.draft_view(db,d,adapter,role) for d in drafts]
+
+
+@app.post("/api/drafts/{draft_id}/{action}", response_model=DraftView)
+def reminder_action(draft_id: UUID, action: Literal["versions","submit","approve","edit-approve","skip","snooze","send"], data: DraftMutation, db: DB, role: Role):
+    try:
+        draft = workflow.mutate(db,COMPANY,adapter,role,draft_id,action,data)
+        result = workflow.draft_view(db,draft,adapter,role)
+        commit(db)
+        return result
+    except workflow.WorkflowError as error:
+        if error.persist:
+            commit(db)
+        else:
+            db.rollback()
+        raise HTTPException(error.code,str(error)) from None
+    except ConfigurationError as error:
+        db.rollback()
+        if action == "send":
+            blocked = db.scalar(select(workflow.ReminderDraft).where(workflow.ReminderDraft.company_id == COMPANY,workflow.ReminderDraft.id == draft_id))
+            if blocked is not None:
+                workflow.audit(db,COMPANY,role.id,"send.blocked",blocked.invoice_id,blocked,dict(reason=str(error)))
+                commit(db)
+        raise HTTPException(409,str(error)) from None
+
+
+@app.get("/api/outbox", response_model=list[OutboxView])
+def outbox(db: DB, role: Role):
+    records = db.scalars(select(workflow.SendLog).join(workflow.ReminderDraft,workflow.ReminderDraft.id == workflow.SendLog.draft_id).join(Invoice,Invoice.id == workflow.ReminderDraft.invoice_id).where(workflow.SendLog.company_id == COMPANY,workflow.ReminderDraft.company_id == COMPANY,Invoice.company_id == COMPANY).order_by(workflow.SendLog.sent_at.desc())).all()
+    return [workflow.send_record(db,COMPANY,r) for r in records]
+
+
+def activity_rows(db, actor, invoice_id=None):
+    query = select(ActivityLog).where(ActivityLog.company_id == COMPANY,ActivityLog.action != "followups.refreshed")
+    if invoice_id is not None:
+        query = query.where(ActivityLog.entity_type == "invoice",ActivityLog.entity_id == invoice_id)
+    return [dict(id=str(a.id),action=a.action,actor_id=str(a.actor_id) if a.actor_id else None,
+        actor_name=workflow.user_name(adapter,a.actor_id),entity_type=a.entity_type,entity_id=str(a.entity_id),
+        invoice_id=str(a.entity_id) if a.entity_type == "invoice" else None,created_at=a.created_at,details=a.after_state)
+        for a in db.scalars(query.order_by(ActivityLog.created_at.desc(),ActivityLog.id.desc()))]
+
+
+@app.get("/api/activity", response_model=list[ActivityView])
+def activity(db: DB, role: Role):
+    return activity_rows(db,role)
+
+
+@app.get("/api/invoices/{invoice_id}/timeline", response_model=list[ActivityView])
+def timeline(invoice_id: UUID, db: DB, role: Role):
+    if db.scalar(select(Invoice.id).where(Invoice.company_id == COMPANY,Invoice.id == invoice_id)) is None:
+        raise HTTPException(404,"Invoice not found")
+    return activity_rows(db,role,invoice_id)

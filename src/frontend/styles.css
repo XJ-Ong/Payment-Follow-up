@@ -2347,3 +2347,236 @@ input[type='checkbox'] {
     transition: none !important;
   }
 }
+
+.workflow-panel .drawer-actions {
+  flex-wrap: wrap;
+  justify-content: flex-start;
+}
+.workflow-panel label {
+  display: grid;
+  gap: 6px;
+  margin: 12px 0;
+}
+.workflow-panel input {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  border: 1px solid #dce4ee;
+  border-radius: 6px;
+  padding: 9px;
+  font: inherit;
+}
+.workflow-panel pre {
+  overflow-wrap: anywhere;
+}
+.workflow-panel details {
+  margin-top: 14px;
+}
+
+/* Saved reminder journey */
+.followups-workspace {
+  padding: 0 20px 20px;
+  min-width: 0;
+}
+.followups-workspace > .section-title {
+  margin: 0 -20px;
+}
+.followup-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 24px 0;
+}
+.followup-tabs button {
+  border: 1px solid #dbe3ef;
+  background: #fff;
+  color: #475569;
+  border-radius: 9px;
+  padding: 10px 14px;
+  cursor: pointer;
+}
+.followup-tabs button[aria-selected='true'] {
+  color: #fff;
+  background: #284fcb;
+  border-color: #284fcb;
+}
+.followup-tabs button span {
+  margin-left: 8px;
+  font-weight: 700;
+}
+.followup-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 22px 0;
+  border-top: 1px solid #e6ebf2;
+}
+.followup-row > div {
+  min-width: 0;
+  flex: 1;
+}
+.followup-row p {
+  margin: 8px 0;
+}
+.followup-row pre,
+.workflow-panel pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: inherit;
+  line-height: 1.7;
+}
+.followup-empty {
+  padding: 36px 16px;
+  background: #f5f7fb;
+  border-radius: 12px;
+  color: #64748b;
+}
+.stage-label {
+  display: inline-block;
+  border-radius: 20px;
+  padding: 4px 10px;
+  color: #284fcb;
+  background: #eef2ff;
+  font-size: 12px;
+  font-weight: 600;
+}
+.journey-progress {
+  display: flex;
+  flex-wrap: wrap;
+  list-style: none;
+  gap: 12px;
+  padding: 0;
+  margin: 20px 0;
+}
+.journey-progress li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #64748b;
+  font-size: 12px;
+}
+.journey-progress li span {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #edf0f5;
+}
+.journey-progress li[aria-current='step'] {
+  color: #284fcb;
+  font-weight: 700;
+}
+.journey-progress li[aria-current='step'] span {
+  background: #284fcb;
+  color: white;
+}
+.journey-progress li.complete {
+  color: #15803d;
+}
+.journey-next {
+  padding: 16px;
+  border-radius: 12px;
+  background: #eef2ff;
+  border-left: 3px solid #284fcb;
+  margin: 16px 0;
+}
+.journey-next p {
+  margin: 8px 0 0;
+}
+.reminder-recipient,
+.approved-message,
+.approval-summary,
+.defer-form {
+  margin: 20px 0;
+  padding: 16px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+}
+.reminder-recipient dd {
+  margin: 4px 0 12px;
+  overflow-wrap: anywhere;
+}
+.reminder-recipient dt {
+  color: #64748b;
+  font-size: 12px;
+}
+.workflow-panel details,
+.invoice-secondary {
+  border-top: 1px solid #e2e8f0;
+  padding-top: 16px;
+  margin-top: 20px;
+}
+.workflow-panel summary,
+.invoice-secondary summary,
+.followup-row summary {
+  cursor: pointer;
+  font-weight: 600;
+  padding: 8px 0;
+}
+.demo-identity {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 18px;
+  padding: 16px 20px;
+  margin-bottom: 22px;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+}
+.demo-identity > div {
+  margin-right: auto;
+}
+.demo-identity p {
+  margin: 5px 0 0;
+  color: #64748b;
+}
+.demo-identity label {
+  display: grid;
+  gap: 5px;
+  font-size: 12px;
+}
+.demo-identity select {
+  max-width: 100%;
+  padding: 8px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  background: white;
+}
+.test-data-control {
+  display: grid;
+  gap: 6px;
+  max-width: 250px;
+}
+.test-data-control small {
+  color: #64748b;
+  font-size: 11px;
+  line-height: 1.5;
+}
+.dashboard-followup-links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+.dashboard-followup-links h2 {
+  width: 100%;
+}
+@media (max-width: 600px) {
+  .main-shell {
+    transition: none;
+  }
+  .followup-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .demo-identity label {
+    width: 100%;
+  }
+  .followups-workspace .section-title {
+    flex-wrap: wrap;
+  }
+}

@@ -322,3 +322,21 @@ def test_migrated_schema_matches_models(store):
     engine, _ = store
     with engine.connect() as db:
         assert compare_metadata(MigrationContext.configure(db, opts={"compare_type": True}), Base.metadata) == []
+
+
+def test_saved_workspace_uses_last_transaction_when_timestamps_match(store):
+    engine,_ = store
+    with Session(engine) as db:
+        row = invoice(db)
+        row_id = row.id
+        db.commit()
+    refresh(engine)
+    with Session(engine) as db:
+        row = db.get(Invoice,row_id)
+        payment(db,row,"2500")
+        row.status = "paid"
+        db.commit()
+    last = refresh(engine)  # deliberately the exact same injected timestamp
+    with Session(engine) as db:
+        assert read_workspace(db,COMPANY).model_dump(mode="json") == last
+        assert not read_workspace(db,COMPANY).queue_ids

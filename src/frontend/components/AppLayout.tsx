@@ -1,6 +1,13 @@
+import type { DemoUser } from '../workflowTypes';
 import { useState, type ReactNode } from 'react';
 import { CalendarDays, ShieldCheck } from 'lucide-react';
-import { type Role, type InvoiceTotals, type CustomerBalance } from '../model';
+import {
+  roles,
+  isRole,
+  type Role,
+  type InvoiceTotals,
+  type CustomerBalance,
+} from '../model';
 import { type Page } from '../navigation';
 import CustomerBalanceChart from './CustomerBalanceChart';
 import Sidebar from './Sidebar';
@@ -11,6 +18,9 @@ import PaymentSummary from './PaymentSummary';
 import PermissionDenied from './PermissionDenied';
 
 export default function AppLayout({
+  users,
+  userId,
+  onUserChange,
   asOf,
   active,
   role,
@@ -26,7 +36,12 @@ export default function AppLayout({
   onAdd,
   children,
   overlays,
+  onSeedTestData,
+  seeding = false,
 }: {
+  users: DemoUser[];
+  userId?: string;
+  onUserChange: (id: string) => void;
   asOf?: string;
   active: Page;
   role: Role;
@@ -42,6 +57,8 @@ export default function AppLayout({
   onAdd: () => void;
   children: ReactNode;
   overlays: ReactNode;
+  onSeedTestData?: () => void;
+  seeding?: boolean;
 }) {
   const [collapsed, setCollapsed] = useState(false);
   const [mobile, setMobile] = useState(false);
@@ -50,6 +67,9 @@ export default function AppLayout({
     <div className={`app-layout ${collapsed ? 'is-collapsed' : ''}`}>
       {mobile && <div className="sidebar-scrim" onClick={() => setMobile(false)} />}
       <Sidebar
+        users={users}
+        userId={userId}
+        onUserChange={onUserChange}
         active={active}
         role={role}
         collapsed={collapsed}
@@ -105,10 +125,83 @@ export default function AppLayout({
             <PermissionDenied />
           ) : (
             <>
-              <ContextBanner reviewCount={totals.alerts ?? totals.review} />
-              <PaymentSummary totals={totals} />
+              {totals.ready !== undefined && (
+                <section className="demo-identity" aria-label="Demo identity">
+                  <div>
+                    <strong>Demo identity</strong>
+                    <p>
+                      Acting as{' '}
+                      {users.find((u) =>
+                        userId
+                          ? u.id === userId
+                          : u.is_default &&
+                            u.role === (role === 'Owner' ? 'owner' : 'finance'),
+                      )?.name ?? role}{' '}
+                      - {role}
+                    </p>
+                  </div>
+                  <label>
+                    Act as
+                    <select
+                      aria-label="DEMO ROLE"
+                      value={role}
+                      onChange={(e) => {
+                        if (isRole(e.target.value)) onRoleChange(e.target.value);
+                      }}
+                    >
+                      {roles.map((r) => (
+                        <option key={r}>{r}</option>
+                      ))}
+                    </select>
+                  </label>
+                  {role === 'Finance' && (
+                    <label>
+                      Finance user
+                      <select
+                        aria-label="DEMO USER"
+                        value={
+                          userId ??
+                          users.find((u) => u.role === 'finance' && u.is_default)?.id ??
+                          ''
+                        }
+                        onChange={(e) => onUserChange(e.target.value)}
+                      >
+                        {users
+                          .filter((u) => u.role === 'finance')
+                          .map((u) => (
+                            <option key={u.id} value={u.id}>
+                              {u.name}
+                            </option>
+                          ))}
+                      </select>
+                    </label>
+                  )}
+                  {onSeedTestData && (
+                    <div className="test-data-control">
+                      <button
+                        className="button"
+                        onClick={onSeedTestData}
+                        disabled={seeding || loading}
+                      >
+                        {seeding ? 'Adding test data…' : 'Add test data'}
+                      </button>
+                      <small>
+                        Temporary · adds TEST invoices; existing records are kept.
+                      </small>
+                    </div>
+                  )}
+                </section>
+              )}
+              {(totals.ready === undefined || active === 'Dashboard') && (
+                <>
+                  <ContextBanner reviewCount={totals.alerts ?? totals.review} />
+                  <PaymentSummary totals={totals} />
+                </>
+              )}
               {children}
-              <CustomerBalanceChart data={balances} total={totalOutstanding} />
+              {(totals.ready === undefined || active === 'Dashboard') && (
+                <CustomerBalanceChart data={balances} total={totalOutstanding} />
+              )}
               <footer className="page-footer">
                 <span>
                   <ShieldCheck size={14} />

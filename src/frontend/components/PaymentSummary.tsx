@@ -27,6 +27,13 @@ export default function PaymentSummary({ totals }: { totals: InvoiceTotals }) {
           icon={FileText}
           color="violet"
         />
+        <SummaryCard
+          label="Pending Approval"
+          value={String(totals.review)}
+          caption="Finance or Owner review required"
+          icon={FileCheck2}
+          color="orange"
+        />
       </section>
     );
   return (

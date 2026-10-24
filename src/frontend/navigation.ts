@@ -12,6 +12,8 @@ import {
 import type { InvoiceScope } from './model';
 
 export type Page =
+  | 'Follow-ups'
+  | 'Reminder Workflow'
   | 'Dashboard'
   | 'Today’s Queue'
   | 'Invoices & Payments'
@@ -25,7 +27,9 @@ type NavigationItem = { label: Page; icon: LucideIcon; group?: boolean };
 
 export const navigation: NavigationItem[] = [
   { label: 'Dashboard', icon: LayoutDashboard },
+  { label: 'Follow-ups', icon: ListTodo },
   { label: 'Today’s Queue', icon: ListTodo },
+  { label: 'Reminder Workflow', icon: FileText },
   { label: 'Invoices & Payments', icon: FileText },
   { label: 'Customer Profiles', icon: Users },
   { label: 'Rules & Settings', icon: Settings2 },

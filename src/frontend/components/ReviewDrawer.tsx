@@ -1,3 +1,5 @@
+import WorkflowPanel from './WorkflowPanel';
+import type { DraftAction, DraftPayload, ActivityRecord } from '../workflowTypes';
 import { useState } from 'react';
 import {
   ArrowRight,
@@ -33,7 +35,13 @@ export default function ReviewDrawer({
   onStatus,
   databaseMode = false,
   onPayment,
+  onWorkflow,
+  activity = [],
+  userId,
 }: {
+  onWorkflow?: (action: DraftAction, payload: DraftPayload) => Promise<void>;
+  activity?: ActivityRecord[];
+  userId?: string;
   databaseMode?: boolean;
   onPayment?: (amount: string, receivedDate: string) => Promise<void>;
   invoice: Invoice;
@@ -48,19 +56,13 @@ export default function ReviewDrawer({
   const [saving, setSaving] = useState(false);
   const blocked = isReminderBlocked(i);
   const editable = isReminderEditable(i);
-  return (
-    <Modal
-      title="Review follow-up"
-      subtitle={`${i.id} · ${c.name}`}
-      onClose={onClose}
-      drawer
-    >
-      <div className="drawer-body">
+  function renderDetails() {
+    return (
+      <>
         {databaseMode && (
           <section className="detail-section">
             <p>
-              Invoice and payment data is saved. Reminder workflow integration is the next
-              stage.
+              Invoices, payments and reminder decisions are saved. Delivery is simulated.
             </p>
             <p>Financial status: {i.financialStatus}</p>
             {outstanding(i) > 0 && i.financialStatus !== 'void' && (
@@ -184,6 +186,34 @@ export default function ReviewDrawer({
             </div>
           )}
         </section>
+      </>
+    );
+  }
+  return (
+    <Modal
+      title="Review follow-up"
+      subtitle={`${i.id} · ${c.name}`}
+      onClose={onClose}
+      drawer
+    >
+      <div className="drawer-body">
+        {databaseMode && onWorkflow && (
+          <WorkflowPanel
+            invoice={i}
+            role={role}
+            userId={userId}
+            activity={activity}
+            onAction={onWorkflow}
+          />
+        )}
+        {databaseMode ? (
+          <details className="invoice-secondary">
+            <summary>Invoice, payment and calculation details</summary>
+            {renderDetails()}
+          </details>
+        ) : (
+          renderDetails()
+        )}
         {blocked ? (
           <div className="blocked-note">
             <ShieldCheck size={21} />
@@ -199,7 +229,7 @@ export default function ReviewDrawer({
               </p>
             </div>
           </div>
-        ) : (
+        ) : !databaseMode ? (
           <>
             <section className="detail-section">
               <div className="reminder-title">
@@ -265,7 +295,7 @@ export default function ReviewDrawer({
               </section>
             )}
           </>
-        )}
+        ) : null}
       </div>
       <div className="drawer-footer">
         {!canApprove(role) && (

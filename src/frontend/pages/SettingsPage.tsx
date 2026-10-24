@@ -37,6 +37,12 @@ export default function SettingsPage({
         <div className="rule-note">
           <p>Saved rules are read-only in this milestone.</p>
           <p>
+            Reminders require Finance approval. Outstanding balances above MYR{' '}
+            {savedRules?.second_approval_amount ?? 'not loaded'} also require a distinct
+            Owner approval. Backup Finance covers Finance leave; high-value reminders wait
+            while Owner is on leave.
+          </p>
+          <p>
             Alert threshold: {savedRules?.alert_threshold ?? 'Not loaded'} RM-days; Safety
             rule: {savedRules?.safety_flag_days ?? 'Not loaded'} days; Reminder spacing:{' '}
             {savedRules?.min_spacing_days ?? 'Not loaded'} days per invoice; Exclude

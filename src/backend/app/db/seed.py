@@ -127,7 +127,8 @@ def seed(reset: bool = False) -> None:
                 second_approval_amount=Decimal(str(RULES["second_approval_amount"])),
                 skip_holidays=RULES["skip_holidays"],
                 primary_approver_id=FINANCE_ID,
-                backup_approver_id=OWNER_ID,
+                backup_approver_id=external_uuid("USR-05"),
+                owner_approver_id=OWNER_ID,
             )
         )
 

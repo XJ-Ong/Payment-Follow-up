@@ -5,6 +5,7 @@ import {
   loadWorkspace,
   createInvoice,
   recordPayment,
+  changeDraft,
   type Dashboard,
   type FollowupAlert,
   type SavedRules,
@@ -30,10 +31,20 @@ import {
   type Status,
 } from './model';
 import { getInvoiceScope, type Page } from './navigation';
+import { addTestData } from './testData';
 import AddInvoiceDialog from './components/AddInvoiceDialog';
 import AppLayout from './components/AppLayout';
 import ReviewDrawer from './components/ReviewDrawer';
 import Toast from './components/Toast';
+import WorkflowPage from './pages/WorkflowPage';
+import { invoiceStage, type FollowupStage } from './followupStages';
+import type {
+  DemoUser,
+  OutboxRecord,
+  ActivityRecord,
+  DraftAction,
+  DraftPayload,
+} from './workflowTypes';
 import ActivityPage from './pages/ActivityPage';
 import CustomerPage from './pages/CustomerPage';
 import InvoicesPage from './pages/InvoicesPage';
@@ -43,18 +54,26 @@ import WeeklySummaryPage from './pages/WeeklySummaryPage';
 export default function App() {
   const [invoices, setInvoices] = useState<Invoice[]>(demoMode ? initialInvoices : []);
   const [customers, setCustomers] = useState<Customer[]>(demoMode ? demoCustomers : []);
+  const [userId, setUserId] = useState<string | undefined>();
+  const [users, setUsers] = useState<DemoUser[]>([]);
+  const [outbox, setOutbox] = useState<OutboxRecord[]>([]);
+  const [activity, setActivity] = useState<ActivityRecord[]>([]);
   const [dashboard, setDashboard] = useState<Dashboard | null>(null);
   const [alerts, setAlerts] = useState<FollowupAlert[]>([]);
   const [rules, setRules] = useState<SavedRules | null>(null);
   const [asOf, setAsOf] = useState<string | undefined>();
   const requestGeneration = useRef(0);
+  const identityGeneration = useRef(0);
   const [active, setActive] = useState<Page>('Dashboard');
+  const [followupStage, setFollowupStage] = useState<FollowupStage>('Ready');
   const [role, setRole] = useState<Role>('Owner');
   const [filters, setFilters] = useState<Filters>(cleanFilters);
   const [applied, setApplied] = useState<Filters>(cleanFilters);
   const [adding, setAdding] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [seeding, setSeeding] = useState(false);
+  const seedRunning = useRef(false);
   const [error, setError] = useState(false);
   const [failRefresh, setFailRefresh] = useState(false);
   const [logs, setLogs] = useState(['Demo workspace opened. All delivery is simulated.']);
@@ -62,6 +81,9 @@ export default function App() {
   const [refreshLabel, setRefreshLabel] = useState('All changes up to date');
 
   function applyWorkspace(data: Awaited<ReturnType<typeof loadWorkspace>>) {
+    setUsers(data.users);
+    setOutbox(data.outbox);
+    setActivity(data.activity);
     setCustomers(data.customers);
     setInvoices(data.invoices);
     setDashboard(data.dashboard);
@@ -79,10 +101,19 @@ export default function App() {
         overdue: Number(dashboard?.total_overdue ?? '0'),
         ready: dashboard?.queue_count ?? 0,
         alerts: dashboard?.alert_count ?? 0,
-        review: 0,
-        drafts: 0,
-        sent: 0,
-        snoozed: 0,
+        review: invoices.filter((i) => i.workflow?.current?.status.startsWith('pending'))
+          .length,
+        drafts: invoices.filter((i) => i.workflow?.current?.status === 'draft').length,
+        sent: outbox.filter(
+          (r) =>
+            new Date(r.sent_at).toLocaleDateString('en-CA', {
+              timeZone: 'Asia/Kuala_Lumpur',
+            }) === asOf,
+        ).length,
+        snoozed: invoices.filter(
+          (i) =>
+            i.workflow?.suppressed_until && i.workflow.suppressed_until > (asOf ?? ''),
+        ).length,
       }
     : getInvoiceTotals(invoices);
   const balances =
@@ -101,7 +132,19 @@ export default function App() {
   const current = invoices.find((invoice) => invoice.id === selected);
 
   function navigate(page: Page) {
-    setActive(page);
+    if (
+      !demoMode &&
+      ['Today’s Queue', 'Reminder Workflow', 'Simulated Outbox'].includes(page)
+    ) {
+      setFollowupStage(
+        page === 'Simulated Outbox'
+          ? 'Sent'
+          : page === 'Reminder Workflow'
+            ? 'Drafts'
+            : 'Ready',
+      );
+      setActive('Follow-ups');
+    } else setActive(page);
     resetFilters();
   }
 
@@ -111,7 +154,9 @@ export default function App() {
   }
 
   function changeRole(nextRole: Role) {
+    identityGeneration.current += 1;
     requestGeneration.current += 1;
+    setUserId(undefined);
     setRole(nextRole);
     setSelected(null);
     setAdding(false);
@@ -124,15 +169,17 @@ export default function App() {
   }
 
   async function addInvoice(invoice: Invoice, issueDate: string) {
+    const identity = identityGeneration.current;
     if (demoMode) setInvoices((previous) => [...previous, invoice]);
     else {
-      const saving = createInvoice(invoice, role, issueDate);
+      const saving = createInvoice(invoice, role, issueDate, userId);
       toast.promise(saving, {
         loading: 'Saving invoice…',
         success: 'Invoice saved.',
         error: (err) => (err instanceof Error ? err.message : 'Unable to save invoice'),
       });
       await saving;
+      if (identity !== identityGeneration.current) return;
       await refresh();
     }
     setAdding(false);
@@ -140,16 +187,79 @@ export default function App() {
   }
 
   async function payInvoice(amount: string, receivedDate: string) {
+    const identity = identityGeneration.current;
     if (!current || demoMode) return;
-    const saving = recordPayment(current, role, amount, receivedDate);
+    const saving = recordPayment(current, role, amount, receivedDate, userId);
     toast.promise(saving, {
       loading: 'Recording payment…',
       success: 'Payment saved.',
       error: (err) => (err instanceof Error ? err.message : 'Unable to record payment'),
     });
     await saving;
+    if (identity !== identityGeneration.current) return;
     await refresh();
     record(`${current.id}: payment recorded.`, false);
+  }
+
+  async function workflowAction(action: DraftAction, payload: DraftPayload) {
+    if (!current) return;
+    const identity = identityGeneration.current;
+    try {
+      await changeDraft(current, action, payload, role, userId);
+      if (identity !== identityGeneration.current) return;
+      await refresh();
+      toast.success('Reminder workflow saved.');
+    } catch (err) {
+      if (identity === identityGeneration.current) await refresh();
+      throw err;
+    }
+  }
+
+  async function seedTestInvoices() {
+    if (
+      seedRunning.current ||
+      loading ||
+      !rules ||
+      !asOf ||
+      demoMode ||
+      role === 'Other Staff'
+    )
+      return;
+    seedRunning.current = true;
+    setSeeding(true);
+    const identity = identityGeneration.current;
+    const notification = toast.loading('Adding test invoices…');
+    try {
+      const count = await addTestData(customers, rules, asOf, role, userId);
+      if (identity !== identityGeneration.current) {
+        toast.dismiss(notification);
+        return;
+      }
+      await refresh();
+      setFollowupStage('Ready');
+      navigate('Follow-ups');
+      toast.success(
+        `${count} TEST invoices added. Paid, future and blocked examples are in Invoices & Payments.`,
+        { id: notification, duration: 8000 },
+      );
+    } catch (err) {
+      if (identity === identityGeneration.current) await refresh();
+      toast.error(err instanceof Error ? err.message : 'Unable to add test data', {
+        id: notification,
+        duration: 8000,
+      });
+    } finally {
+      seedRunning.current = false;
+      setSeeding(false);
+    }
+  }
+
+  function changeUser(nextId: string) {
+    identityGeneration.current += 1;
+    requestGeneration.current += 1;
+    setUserId(nextId);
+    setSelected(null);
+    setAdding(false);
   }
 
   function updateStatus(invoice: Invoice, status: Status, reminder: string) {
@@ -190,7 +300,7 @@ export default function App() {
       if (failRefresh && !skipSimulatedFailure)
         throw new Error('Simulated connection failure');
       if (!demoMode) {
-        const data = await loadWorkspace(role);
+        const data = await loadWorkspace(role, true, userId);
         if (generation !== requestGeneration.current) return;
         applyWorkspace(data);
       }
@@ -215,6 +325,8 @@ export default function App() {
     const generation = ++requestGeneration.current;
     setInvoices([]);
     setCustomers([]);
+    setOutbox([]);
+    setActivity([]);
     setDashboard(null);
     setAlerts([]);
     setRules(null);
@@ -224,7 +336,7 @@ export default function App() {
     }
     setLoading(true);
     setError(false);
-    loadWorkspace(role)
+    loadWorkspace(role, true, userId)
       .then((data) => {
         if (!cancelled && generation === requestGeneration.current) {
           applyWorkspace(data);
@@ -245,7 +357,7 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [role]);
+  }, [role, userId]);
 
   function retryConnection() {
     setFailRefresh(false);
@@ -260,6 +372,20 @@ export default function App() {
   }
 
   function renderPage() {
+    if (!demoMode && active === 'Follow-ups')
+      return (
+        <WorkflowPage
+          invoices={invoices}
+          outbox={outbox}
+          stage={followupStage}
+          asOf={asOf ?? ''}
+          loading={loading}
+          error={error}
+          onRetry={retryConnection}
+          onStage={setFollowupStage}
+          onReview={setSelected}
+        />
+      );
     switch (active) {
       case 'Rules & Settings':
         return (
@@ -282,7 +408,7 @@ export default function App() {
           />
         );
       case 'Activity Log':
-        return <ActivityPage logs={logs} />;
+        return <ActivityPage logs={logs} records={demoMode ? undefined : activity} />;
       case 'Weekly Summary':
         return <WeeklySummaryPage totals={totals} />;
       default:
@@ -308,6 +434,15 @@ export default function App() {
 
   return (
     <AppLayout
+      onSeedTestData={
+        import.meta.env.DEV && !demoMode && rules && asOf
+          ? () => void seedTestInvoices()
+          : undefined
+      }
+      seeding={seeding}
+      users={demoMode ? [] : users}
+      userId={userId}
+      onUserChange={changeUser}
       asOf={asOf}
       active={active}
       role={role}
@@ -340,11 +475,20 @@ export default function App() {
             <ReviewDrawer
               key={current.id}
               databaseMode={!demoMode}
+              userId={userId}
+              activity={activity}
+              onWorkflow={workflowAction}
               onPayment={payInvoice}
               invoice={current}
               graceDays={getGraceDays(current, graceOverrides)}
               role={role}
-              onClose={() => setSelected(null)}
+              onClose={() => {
+                if (!demoMode && active === 'Follow-ups') {
+                  const destination = invoiceStage(current, asOf ?? '');
+                  if (destination) setFollowupStage(destination);
+                }
+                setSelected(null);
+              }}
               onStatus={(status, text) => updateStatus(current, status, text)}
             />
           )}
@@ -377,6 +521,35 @@ export default function App() {
               );
             })}
           {!dashboard?.alert_count && <p>No active follow-up alerts.</p>}
+        </section>
+      )}
+      {!demoMode && active === 'Dashboard' && (
+        <section
+          className="card dashboard-followup-links"
+          aria-label="Continue follow-ups"
+        >
+          <h2>Continue follow-ups</h2>
+          {(
+            [
+              'Ready',
+              'Drafts',
+              'Awaiting approval',
+              'Ready to send',
+              'Sent',
+              'Deferred',
+            ] as FollowupStage[]
+          ).map((stage) => (
+            <button
+              className="button"
+              key={stage}
+              onClick={() => {
+                setFollowupStage(stage);
+                navigate('Follow-ups');
+              }}
+            >
+              {stage}
+            </button>
+          ))}
         </section>
       )}
       {renderPage()}

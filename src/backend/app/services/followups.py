@@ -29,8 +29,14 @@ def lock_rule(db: Session, company: UUID) -> FollowupRule:
 
 
 def read_workspace(db: Session, company: UUID, now: datetime | None = None) -> WorkspaceView:
-    saved = db.scalar(select(ActivityLog).where(ActivityLog.company_id == company,
-                     ActivityLog.action == "followups.refreshed").order_by(ActivityLog.created_at.desc(), ActivityLog.id.desc()).limit(1))
+    rule = db.scalar(select(FollowupRule).where(FollowupRule.company_id == company))
+    saved = None
+    if rule is not None and rule.latest_workspace_event_id is not None:
+        saved = db.scalar(select(ActivityLog).where(ActivityLog.company_id == company,ActivityLog.id == rule.latest_workspace_event_id,ActivityLog.action == "followups.refreshed"))
+    if saved is None:
+        # Legacy workspaces have no pointer until their first refresh on this revision.
+        saved = db.scalar(select(ActivityLog).where(ActivityLog.company_id == company,
+                         ActivityLog.action == "followups.refreshed").order_by(ActivityLog.created_at.desc(), ActivityLog.id.desc()).limit(1))
     if saved is not None:
         return WorkspaceView.model_validate(saved.after_state)
     return WorkspaceView(as_of_date=malaysia_date(now or datetime.now(timezone.utc)), computed_at=None,
@@ -61,7 +67,7 @@ def refresh_workspace(db: Session, company: UUID, adapter: OrbyteAdapter,
     last_sent = dict(db.execute(select(ReminderDraft.invoice_id, func.max(SendLog.sent_at)).join(SendLog, SendLog.draft_id == ReminderDraft.id).where(ReminderDraft.company_id == company, SendLog.company_id == company, SendLog.status == "simulated").group_by(ReminderDraft.invoice_id)).all())
     earliest = min((invoice.due_date for invoice, _ in rows), default=as_of)
     holidays = tuple(h.date for h in adapter.list_public_holidays(company, earliest, as_of)) if rule.skip_holidays and earliest <= as_of else ()
-    rules = dict(grace_days_by_tier=rule.grace_days_by_tier, alert_threshold=f"{rule.alert_threshold:.2f}", safety_flag_days=rule.safety_flag_days, min_spacing_days=rule.min_spacing_days, skip_holidays=rule.skip_holidays, primary_approver_id=str(rule.primary_approver_id))
+    rules = dict(grace_days_by_tier=rule.grace_days_by_tier, alert_threshold=f"{rule.alert_threshold:.2f}", safety_flag_days=rule.safety_flag_days, min_spacing_days=rule.min_spacing_days, skip_holidays=rule.skip_holidays, primary_approver_id=str(rule.primary_approver_id), backup_approver_id=str(rule.backup_approver_id) if rule.backup_approver_id else None, owner_approver_id=str(rule.owner_approver_id) if rule.owner_approver_id else None, second_approval_amount=f"{rule.second_approval_amount:.2f}")
     calculations = {}
     for invoice, payments in rows:
         if invoice.client_id not in clients or invoice.client_id not in profiles:
@@ -73,9 +79,12 @@ def refresh_workspace(db: Session, company: UUID, adapter: OrbyteAdapter,
             safety_flag_days=rule.safety_flag_days, min_spacing_days=rule.min_spacing_days,
             do_not_contact=profile.do_not_contact, skip_holidays=rule.skip_holidays, holidays=holidays,
             last_sent_date=malaysia_date(last_sent[invoice.id]) if invoice.id in last_sent else None)
+    from .workflow import synchronize, workflow_views
+    synchronize(db, company, adapter, rule, rows, calculations, actor_id, now)
     ranked = sorted((i for i, _ in rows if i.status not in ("void", "paid") and calculations[i.id].outstanding > 0 and calculations[i.id].days_overdue > 0), key=lambda i: ranking_key(i.invoice_no, str(i.id), calculations[i.id]))
     ranks = {i.id: rank for rank, i in enumerate(ranked, 1)}
     snapshots = {s.invoice_id: s for s in db.scalars(select(PrioritySnapshot).where(PrioritySnapshot.company_id == company, PrioritySnapshot.as_of_date == as_of))}
+    workflows = workflow_views(db, company, adapter, now=now)
     invoice_views = []
     for invoice, payments in rows:
         c = calculations[invoice.id]
@@ -104,7 +113,7 @@ def refresh_workspace(db: Session, company: UUID, adapter: OrbyteAdapter,
         snapshot.calculation = detail
         invoice_views.append(dict(id=str(invoice.id), invoice_no=invoice.invoice_no,
             client_id=str(invoice.client_id), issue_date=invoice.issue_date.isoformat(), due_date=invoice.due_date.isoformat(),
-            total_amount=f"{invoice.total_amount:.2f}", payments=f"{payments:.2f}", outstanding_amount=f"{c.outstanding:.2f}", status=invoice.status, calculation=detail))
+            total_amount=f"{invoice.total_amount:.2f}", payments=f"{payments:.2f}", outstanding_amount=f"{c.outstanding:.2f}", status=invoice.status, calculation=detail, workflow=workflows[invoice.id]))
     db.flush()
     # Old alerts stay as history; only current eligible alerts remain active.
     alerts = db.scalars(select(Alert).where(Alert.company_id == company)).all()
@@ -154,8 +163,11 @@ def refresh_workspace(db: Session, company: UUID, adapter: OrbyteAdapter,
         dashboard=dict(total_outstanding=f"{sum(balances.values(), Decimal('0.00')):.2f}", total_overdue=f"{total_overdue:.2f}", queue_count=len(queue),
             alert_count=sum(a["status"] in ("new", "seen") for a in alert_views),
             customer_balances=[dict(customer_id=str(c), name=clients[c].name, balance=f"{balance:.2f}") for c, balance in balances.items()], ranking_ids=[str(i.id) for i in ranked])))
-    db.add(ActivityLog(id=uuid4(), company_id=company, actor_type="user", actor_id=actor_id,
+    event = ActivityLog(id=uuid4(), company_id=company, actor_type="user", actor_id=actor_id,
         action="followups.refreshed", entity_type="company", entity_id=company,
-        after_state=workspace.model_dump(mode="json"), created_at=now))
+        after_state=workspace.model_dump(mode="json"), created_at=now)
+    db.add(event)
+    db.flush()
+    rule.latest_workspace_event_id = event.id
     db.flush()
     return workspace

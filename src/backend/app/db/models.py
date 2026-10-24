@@ -66,7 +66,9 @@ class FollowupRule(Base):
     second_approval_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2))
     skip_holidays: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
     primary_approver_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True))  # Orbyte ref
-    backup_approver_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True))  # Orbyte ref
+    backup_approver_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True))  # Finance backup
+    owner_approver_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True))
+    latest_workspace_event_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("activity_log.id", ondelete="RESTRICT"))
 
 
 # 2
@@ -118,6 +120,8 @@ class Invoice(Base):
     due_date: Mapped[date] = mapped_column(Date)
     total_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2))
     status: Mapped[str] = mapped_column(String(20), server_default="open")
+    followup_suppressed_until: Mapped[date | None] = mapped_column(Date)
+    followup_suppression_reason: Mapped[str | None] = mapped_column(Text)
     source: Mapped[str] = mapped_column(String(20))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
 
@@ -198,13 +202,14 @@ class ReminderDraft(Base):
     __tablename__ = "reminder_draft"
     __table_args__ = (
         UniqueConstraint("invoice_id", "version", name="uq_reminder_draft_invoice_version"),
+        Index("uq_reminder_current_invoice", "invoice_id", unique=True, postgresql_where=text("is_current")),
         CheckConstraint("channel IN ('Email', 'WhatsApp')", name="ck_reminder_draft_channel"),
         CheckConstraint("language IN ('English', 'Bahasa Malaysia')", name="ck_reminder_draft_language"),
         CheckConstraint("tone IN ('Friendly', 'Neutral', 'Firm')", name="ck_reminder_draft_tone"),
         CheckConstraint("written_by IN ('template', 'ai', 'human')", name="ck_reminder_draft_written_by"),
         CheckConstraint(
             "status IN ('draft', 'pending_approval', 'pending_second_approval',"
-            " 'approved', 'sent', 'skipped', 'snoozed')",
+            " 'approved', 'sent', 'skipped', 'snoozed', 'superseded', 'invalidated')",
             name="ck_reminder_draft_status",
         ),
         CheckConstraint("ai_model IS NULL OR written_by = 'ai'", name="ck_reminder_draft_ai_model"),
@@ -215,6 +220,12 @@ class ReminderDraft(Base):
     company_id: Mapped[UUID] = _company_id()
     invoice_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("invoice.id", ondelete="RESTRICT"))
     snapshot_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("priority_snapshot.id", ondelete="RESTRICT"))
+    prepared_by: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True))
+    facts: Mapped[dict] = mapped_column(JSONB, server_default=text("'{}'::jsonb"))
+    approval_policy: Mapped[dict] = mapped_column(JSONB, server_default=text("'{}'::jsonb"))
+    is_current: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    is_legacy: Mapped[bool] = mapped_column(Boolean, server_default=text("true"))
+    supersedes_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("reminder_draft.id", ondelete="RESTRICT"))
     version: Mapped[int] = mapped_column(Integer)
     channel: Mapped[str] = mapped_column(String(20))
     language: Mapped[str] = mapped_column(String(30))
@@ -237,11 +248,15 @@ class Approval(Base):
         CheckConstraint("decision IN ('approve', 'edit_approve', 'skip', 'snooze')", name="ck_approval_decision"),
         CheckConstraint("decision <> 'snooze' OR snooze_until IS NOT NULL", name="ck_approval_snooze_until"),
         Index("ix_approval_draft_id", "draft_id"),
+        Index("uq_approval_distinct_actor", "draft_id", "approver_id", unique=True,
+              postgresql_where=text("NOT is_legacy AND decision IN ('approve', 'edit_approve')")),
     )
 
     id: Mapped[UUID] = _uuid_pk()
     company_id: Mapped[UUID] = _company_id()
     draft_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("reminder_draft.id", ondelete="RESTRICT"))
+    is_legacy: Mapped[bool] = mapped_column(Boolean, server_default=text("true"))
+    context: Mapped[dict] = mapped_column(JSONB, server_default=text("'{}'::jsonb"))
     approver_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True))  # Orbyte ref
     approval_step: Mapped[int] = mapped_column(Integer)
     decision: Mapped[str] = mapped_column(String(20))
