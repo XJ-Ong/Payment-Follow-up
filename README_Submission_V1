@@ -1,0 +1,301 @@
+# Payment Follow-up
+
+> A plugin for Orbyte's Work module that helps Malaysian micro and small businesses decide which late-paying customer to chase, drafts the reminder with AI, and lets a person approve it before anything is sent.
+
+> Orbyte's platform services (identity, roles, approvals, audit trail, client and project data) are **simulated** in this repo. Every Orbyte-side field and API is our own assumption. All data is synthetic.
+
+***
+
+## Team Information
+
+| Field                 | Details                                                    |
+| --------------------- | ---------------------------------------------------------- |
+| **Team Name**         | ProjectKita                                                |
+| **Team Domain**       | Domain 2: Orbyte Smart SME Challenge                       |
+| **SDG Track (1–17)**  | SDG 8, Decent Work and Economic Growth (supporting: SDG 9) |
+| **Team Leader**       | Muhammad Fikri Bin Mohd Nizan                              |
+| **University**        | Asia Pacific University of Technology and Innovation (APU) |
+| **Number of Members** | 5                                                          |
+
+## Links
+
+| Resource          | Link                                                                          |
+| ----------------- | ----------------------------------------------------------------------------- |
+| GitHub Repository | `<TODO: https://github.com/...>`                                              |
+| Live Demo         | `<TODO: https://....replit.app>`                                              |
+| RunPod Endpoint   | `<TODO: https://api.runpod.ai/v2/<endpoint-id>>` (do not publish the API key) |
+| Slide Deck        | `<TODO>`                                                                      |
+| Demo Video        | `<TODO>`                                                                      |
+
+***
+
+## Overview
+
+### Problem
+
+Malaysian SMEs wait an average of 64 days to be paid, about six days longer than large corporates (Experian Malaysia, *State of Credit 2025*). Many owners track invoices in Excel and chase customers on WhatsApp, with no consistent rule for who to chase first or how firmly. Late cash limits an SME's ability to pay staff, suppliers and rent. We interviewed one owner-run micro rental-car business to understand its invoicing and communication habits. This is one case, not a survey.
+
+### Solution
+
+Payment Follow-up shows the owner who owes them money, ranks each overdue invoice with a transparent priority score (amount still owed × days overdue, after grace days by customer type), and tells them each day who to chase and why. AI writes the reminder in the customer's preferred channel, language and tone. **A person always approves before anything goes out, and every action is recorded.** Code decides and calculates; AI only writes and explains.
+
+### Key Features
+
+* **Priority score and daily queue** — ranks overdue invoices and shows the reason for each ranking.
+* **AI-drafted reminders** — English or Bahasa Malaysia, with a check that every number matches the data and a fixed-template fallback if the AI fails.
+* **Human approval** — approve, edit and approve, skip or snooze. Optional second approval for high-value items.
+* **Roles and permissions (simulated)** — Owner and Finance can view and act; Other staff see nothing. Checked in the backend on every call.
+* **Activity log** — append-only record of every alert, draft, edit, approval, send and rule change.
+* **Weekly summary** — numbers calculated by code, narrative written by AI.
+* **Messaging** — after approval, reminders to customers who prefer Telegram are sent for real through a Telegram bot. WhatsApp and email sending stay simulated (outbox preview). No real payments are processed.
+
+### Tech Stack
+
+| Layer             | Technology                                                                   |
+| ----------------- | ---------------------------------------------------------------------------- |
+| Frontend          | React, Vite, Tailwind CSS, shadcn/ui, Recharts                               |
+| Backend           | Python, FastAPI, Pydantic, APScheduler                                       |
+| Database          | PostgreSQL, SQLAlchemy 2.0 (`Decimal` / `NUMERIC` for money, currency MYR)   |
+| AI / Compute      | RunPod Serverless, open model `<TODO: model name>` served with vLLM          |
+| Hosting / Dev     | Replit (Reserved VM) for deployment and hosting, with its own PostgreSQL     |
+| Orbyte simulation | Python `Protocol` interface with `MockOrbyteAdapter` reading JSON seed files |
+| Testing           | pytest                                                                       |
+| Source control    | GitHub: `main` (final, deployed), `dev` (integration), personal branches     |
+| Messaging         | Telegram Bot API (real customer reminders); WhatsApp and email simulated     |
+
+***
+
+## Project Structure
+
+> `<TODO: developers, confirm this matches the repo before submitting.>`
+
+```
+.
+├── docs/                    # Screenshots, diagrams
+├── src/
+│   ├── backend/             # FastAPI app (package: app), seed data, tests
+│   └── frontend/            # React (Vite) single-page app
+├── submission/              # Required submission documents
+│   ├── SDC2026_ProjectKita_Preliminary.pdf
+│   ├── SDC2026_ProjectKita_TechDeclaration.pdf
+│   ├── SDC2026_ProjectKita_Replit_POU.pdf
+│   └── SDC2026_ProjectKita_Runpod_POU.pdf
+├── docker-compose.yml       # Local PostgreSQL + Adminer
+├── .env.example             # Example environment variables
+├── .gitignore
+├── .replit                  # Replit run configuration
+├── LICENSE
+└── README.md
+```
+
+### Architecture
+
+```
++---------------------------------------------------------------+
+|  Browser: React (Vite) single-page app                        |
++------------------------------+--------------------------------+
+                               | HTTPS, JSON (/api/...)
+                               | X-Role header (simulated login)
++------------------------------v--------------------------------+
+|  FastAPI application (one deployable service)                 |
+|                                                               |
+|  API routes (thin; role checked in one dependency)            |
+|        |                                                      |
+|  Services (plain Python, no web or DB code in the logic)      |
+|   - scoring        deterministic, unit-tested                 |
+|   - workflow       drafts, approvals, second approver         |
+|   - ai_service     prompt -> model -> number check -> fallback|
+|   - audit          append-only activity log                   |
+|   - scheduler      daily check (APScheduler)                  |
+|        |                                  |                   |
++--------+----------------------------------+-------------------+
+         |                                  |
++--------v----------+            +----------v-------------------+
+| PostgreSQL        |            | Orbyte adapter (Protocol)    |
+| our own tables    |            |  MockOrbyteAdapter -> JSON   |
+|                   |            |  OrbyteApiAdapter (future)   |
++-------------------+            +------------------------------+
+
++----------------------------------+
+| Runpod Serverless endpoint       |  called only by ai_service
+| open model served with vLLM      |  (OpenAI-compatible API)
++----------------------------------+
++----------------------------------+
+| Telegram Bot API                 |  called only after a recorded approval
+| real customer reminders          |  (WhatsApp and email stay simulated)
++----------------------------------+
+```
+
+### Security controls
+
+* Security headers on the frontend, targeting at least a B grade on Mozilla's HTTP Observatory. `<TODO: add the scan result for the deployed URL once measured.>`
+* PostgreSQL row-level security to keep each company's data separate.
+* Role checks are enforced in the backend, not only hidden in the UI.
+* API keys and the database connection string stay on the backend and are never exposed to the browser.
+* The Telegram bot token is stored in secrets (Replit Secrets locally in `.env`), never in the code or repository.
+* A message is only sent after a recorded human approval, and only if the customer is not marked "do not contact" and the reminder-spacing rule allows it. Customers must press Start on the bot before they can receive messages.
+
+***
+
+## How to Run
+
+### Option 1: Run on Replit (Recommended)
+
+1. Open the \[Replit Project]\(`<TODO: Replit project link>`), or import this repository via **Create Repl → Import from GitHub**.
+2. Open the **Secrets** tab and add the variables listed in `.env.example`, including:
+   * `RUNPOD_API_KEY`
+   * `RUNPOD_ENDPOINT_ID`
+   * `<TODO: database URL variable name and any other variables from .env.example>`
+3. Click **Run**. Replit uses the `.replit` file to start the app. `<TODO: confirm the start command.>`
+
+### Option 2: Run Locally
+
+**Prerequisites:** [Docker](https://docs.docker.com/get-docker/) (with Compose), [Python 3.12+](https://www.python.org/downloads/), and [uv](https://docs.astral.sh/uv/).
+
+On Windows, install `uv` and a supported Python version from PowerShell:
+
+```PowerShell
+winget install --id=astral-sh.uv -e
+winget install --id=Python.Python.3.12 -e
+```
+
+Restart PowerShell after installation, then verify:
+
+```PowerShell
+uv --version
+python --version
+```
+
+If `python --version` still reports an older version, use uv's managed Python directly:
+
+```PowerShell
+uv python install 3.12
+```
+
+From the repo root:
+
+```Shell
+# 1. Create your local config (first time only)
+cp .env.example .env
+
+# 2. Start PostgreSQL + Adminer
+docker compose up -d
+
+# 3. Enter the backend project
+cd src/backend
+
+# 4. Install Python dependencies (creates .venv from uv.lock)
+uv sync
+
+# 5. Check the connection (prints the PostgreSQL version)
+uv run python check_db.py
+
+# 6. Create the 11 tables
+uv run python -m app.db.init_db
+
+# 7. Load the demo data
+uv run python -m app.db.seed
+```
+
+| Command               | What it does                                                                                                                 | Safe to re-run?                             |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
+| `check_db.py`         | connects to the container and prints the server version                                                                      | yes                                         |
+| `app.db.init_db`      | creates any missing tables (`create_all`); never drops or alters existing ones                                               | yes                                         |
+| `app.db.seed`         | inserts the demo world (1 rule set, 10 client profiles, 20 invoices, 5 payments, 3 reminder histories); refuses to run twice | yes. Prints `Already seeded`                |
+| `app.db.seed --reset` | **drops all tables**, recreates and reseeds                                                                                  | **destructive**. Wipes anything you entered |
+
+**Notes**
+
+* Steps 3–7 must run from `src/backend/`. The `app` package lives there (from the repo root you get `No module named app`).
+* Demo dates are **relative to the day you seed** (an invoice due 40 days ago stays 40 days overdue whenever the demo runs). To refresh them, re-run `app.db.seed --reset`.
+* There is no migration tool in the MVP: after changing a model, re-create from scratch with `app.db.seed --reset`.
+* Browse the data in **Adminer** at <http://localhost:8080>: server `db` (the Compose service name, *not* `localhost`), username `followup`, password `followup_dev_password` (local development only), database `followup`.
+* Stop the database with `docker compose down`; add `-v` to also delete the data volume (after that, run `init_db` and `seed` again).
+
+### Run Tests
+
+```Shell
+cd src/backend
+uv run pytest
+```
+
+***
+
+## How We Use Replit *(Required)*
+
+* **Hosting:** the prototype is deployed on a Replit Reserved VM at the Live Demo link above, with its own Replit PostgreSQL.
+* **Why hosting only:** after the Replit workshop we chose to use Replit only for deployment and hosting, because its credit limits could run out in the middle of development. Day-to-day development runs locally with Docker.
+* **Secrets:** API keys are stored in Replit Secrets, never in the code.
+
+📄 Proof of use: [`submission/SDC2026_ProjectKita_Replit_POU.pdf`](submission/SDC2026_ProjectKita_Replit_POU.pdf)
+
+## How We Use RunPod *(Required)*
+
+* **Workload:** text generation (reminder drafts, ranking explanations and the weekly summary narrative) runs on a RunPod Serverless endpoint serving an open-source model with vLLM.
+* **Why RunPod:** we use an open model on our own endpoint instead of a third-party AI API, and the backend sends it only the fields it needs (no contact numbers or emails).
+* **Integration:** only `ai_service` calls the endpoint, through the OpenAI-compatible API using the `openai` Python library, with `RUNPOD_API_KEY` and `RUNPOD_ENDPOINT_ID`.
+* **Safety around the model:** every number in a draft is checked against the invoice data. If the check or the call fails, a fixed template is used. The rest of the system works with AI switched off.
+
+Example request (`<TODO: developers, confirm the URL path and model name.>`):
+
+```Shell
+curl -X POST https://api.runpod.ai/v2/$RUNPOD_ENDPOINT_ID/openai/v1/chat/completions \
+  -H "Authorization: Bearer $RUNPOD_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"model": "<TODO: model name>", "messages": [{"role": "user", "content": "Hello"}]}'
+```
+
+📄 Proof of use: [`submission/SDC2026_ProjectKita_Runpod_POU.pdf`](submission/SDC2026_ProjectKita_Runpod_POU.pdf)
+
+***
+
+## Challenges & Learnings
+
+* **Ranking formula:** our first priority formula (days late ÷ amount owed) ranked big debts below small ones. We replaced it with amount owed × days overdue, and handled customer relationship as grace days.
+* **Too many reviewers:** a separate drafting role added a second review of the same message, against the "less busywork" goal. We removed it, so the AI drafts and one human decides.
+* **AI wording errors:** small models can write weak drafts, especially in Bahasa Malaysia. We insert amounts and dates from data fields, check every number, and fall back to a template.
+* **Credit limits:** to avoid running out of Replit credits mid-development, we develop locally and use Replit for deployment only.
+* **No access to Orbyte's platform:** we simulate it behind an adapter interface, so the real APIs can replace the mock later.
+* **Honest limits:** we interviewed one micro business. All results are measured on synthetic data, not real SME data.
+* **Real messaging scope:** we upgraded sending from fully simulated to real Telegram messages for customers, to prove the approval gate guards a real action. WhatsApp needs a business API setup, so it stays simulated. Failed sends appear in the Today queue because the owner is not alerted by message.
+
+## Future Improvements
+
+* [ ] Promise-to-pay and dispute hold
+* [ ] Escalation ladder (friendly → firm → owner call), approved at each step, never legal
+* [ ] Real WhatsApp and email sending
+* [ ] Photo or WhatsApp-text invoice capture
+* [ ] Payment history and cash-in forecast
+* [ ] Partner payment data through Orbyte Connect
+* [ ] Optional draft-only Preparer role
+* [ ] Usage metering for Orbyte's transaction-based pricing
+* [ ] Two-way messaging, so customer replies reach the owner
+
+## Team
+
+| Name     | Role                                  | GitHub              |
+| -------- | ------------------------------------- | ------------------- |
+| `<TODO>` | Developer                             | `<TODO: @username>` |
+| `<TODO>` | Developer                             | `<TODO: @username>` |
+| `<TODO>` | AI / RunPod integration               | `<TODO: @username>` |
+| `<TODO>` | UAT and pitching                      | `<TODO: @username>` |
+| Fikri    | Moderator, mock data and seed queries | `<TODO: @username>` |
+
+***
+
+## Submission Checklist
+
+* [ ] Team name, domain (Domain 2) and SDG track filled in
+* [ ] Slide deck link added
+* [ ] Demo video link added
+* [ ] Replit used, with proof of use in `submission/`
+* [ ] RunPod used, with proof of use in `submission/`
+* [ ] Preliminary submission completed (`SDC2026_ProjectKita_Preliminary.pdf`)
+* [ ] Technology declaration completed (`SDC2026_ProjectKita_TechDeclaration.pdf`)
+* [ ] Submission files renamed with the team name
+* [ ] "How to Run" steps verified
+* [ ] No API keys or secrets committed to the repository
+
+## License
+
+This project is licensed under the [Apache License 2.0](LICENSE).
