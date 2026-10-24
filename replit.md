@@ -30,6 +30,17 @@ require separate service configuration and have not been enabled.
 - Backend: `cd src/backend && python -m pytest tests`
   (tests create and clean up isolated temporary PostgreSQL databases).
 
+## Publishing configuration
+
+Replit builds the Vite frontend with `npm run build` and runs FastAPI with
+`bash scripts/start-prod.sh`. FastAPI serves the built frontend and its `/api`
+routes from the same origin. These commands are configured for Autoscale
+publishing.
+
+Publishing this demo does not add real authentication. `DEMO_MODE` is
+development-only and production API requests fail closed until authentication
+is implemented. Do not enable the simulated role headers on a public deployment.
+
 Known imported test issue: `test_suggest_invoice_issue_date_is_completed_date`
 compares the server's UTC date with Malaysia-local fixture dates, and can fail
 between midnight and 08:00 Malaysia time. This is separate from Replit startup.

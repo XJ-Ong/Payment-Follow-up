@@ -7,6 +7,7 @@ from collections import defaultdict
 from contextlib import asynccontextmanager
 from datetime import date, datetime
 from decimal import Decimal
+from pathlib import Path
 from time import monotonic
 from typing import Annotated, Literal
 from uuid import UUID, uuid4
@@ -15,6 +16,7 @@ from zoneinfo import ZoneInfo
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response, JSONResponse
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy import func, select, text
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
@@ -540,3 +542,10 @@ def ai_test():
 @app.get('/api/invoices/import/references', response_model=list[CsvClientReference])
 def invoice_csv_references(role: Role):
     return csv_import.references(COMPANY,adapter)
+
+
+# Production builds include the Vite output at the repository root. In development
+# Vite serves the UI separately, so leave the API-only app unchanged when absent.
+frontend_dist = Path(__file__).resolve().parents[3] / "dist"
+if frontend_dist.is_dir():
+    app.mount("/", StaticFiles(directory=frontend_dist, html=True), name="frontend")
