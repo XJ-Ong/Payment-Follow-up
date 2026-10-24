@@ -10,9 +10,11 @@ expertMode = true
 [userenv]
 
 [userenv.development]
-AI_MODE = "template"
+AI_MODE = "ai"
 DEMO_MODE = "true"
 VITE_DATA_MODE = "api"
+AI_MODEL = "qwen2.5-coder:1.5b"
+OPENAI_BASE_URL = "https://w78qdffu3ox6bi-11434.proxy.runpod.net/v1"
 
 [workflows]
 runButton = "Project"
