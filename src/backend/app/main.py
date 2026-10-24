@@ -1,5 +1,6 @@
 """Database-backed demo API. X-Role is simulation, not authentication."""
 import os
+from contextlib import asynccontextmanager
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Annotated, Literal
@@ -28,8 +29,18 @@ from .services.invoices import InvoiceInput, PaymentInput
 from .csv_schemas import CsvInput, CsvPreview, CsvImportResult
 from .services.followups import ConfigurationError, lock_rule, refresh_workspace, read_workspace
 from .followup_schemas import SummaryInput, SummaryView
+from . import scheduler
 
-app = FastAPI(title="Payment Follow-up")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """FastAPI lifespan: startup and shutdown events."""
+    # Startup
+    scheduler.start_scheduler()
+    yield
+    # Shutdown
+    scheduler.stop_scheduler()
+
+app = FastAPI(title="Payment Follow-up", lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=[origin.strip() for origin in os.getenv("CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173").split(",") if origin.strip()], allow_methods=["GET", "POST"], allow_headers=["Content-Type", "X-Role", "X-User-ID"])
 
 @app.middleware("http")
