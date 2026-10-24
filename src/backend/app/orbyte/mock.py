@@ -2,7 +2,7 @@
 
 Implements the OrbyteAdapter protocol over the inlined synthetic world in
 app/orbyte/fixture.py (1 company, 5 users, 10 clients, 6 projects,
-3 milestones, 1 leave record, 2 holidays). Same conventions as seed.py:
+4 milestones, 1 leave record, 2 holidays). Same conventions as seed.py:
 
 - External codes ("CLI-02") become uuids via app.ids.external_uuid, so the
   ids in the fixture match the uuids our database already stores.
@@ -176,6 +176,9 @@ class MockOrbyteAdapter:
             return self._milestones[milestone_id]
         except KeyError:
             raise LookupError(f"unknown milestone {milestone_id}") from None
+
+    def list_milestones(self, project_id: UUID) -> list[Milestone]:
+        return [m for m in self._milestones.values() if m.project_id == project_id]
 
     def list_approved_leave(self, user_id: UUID, on_date: date) -> list[ApprovedLeave]:
         return [
