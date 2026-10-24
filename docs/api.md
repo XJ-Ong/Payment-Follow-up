@@ -329,6 +329,65 @@ Returns:
 
 ---
 
+## Scheduler (Optional)
+
+The system can automate daily scoring refresh and weekly summary generation. This is **optional** — all features remain accessible via manual REST endpoints.
+
+### Configuration
+
+Set environment variables to enable:
+
+```bash
+ENABLE_SCHEDULER=true  # Enable automated jobs
+DAILY_CHECK_HOUR=9  # Hour (0-23) in Malaysia time
+ENABLE_WEEKLY_SUMMARY=true  # Optional: auto-generate weekly summaries
+WEEKLY_SUMMARY_DAY=monday  # Day for weekly summary
+WEEKLY_SUMMARY_HOUR=9  # Hour for weekly summary
+```
+
+### Daily Scoring Refresh
+
+**Schedule:** Daily at configured hour (default 9 AM MYT)  
+**Action:** Calls `refresh_workspace()` to recalculate all priority scores  
+**Logging:** Creates activity log entry with action `scheduler.daily_scoring`
+
+**Equivalent manual operation:**
+```bash
+POST /api/followups/refresh
+```
+
+### Weekly Summary Generation
+
+**Schedule:** Weekly on configured day at configured hour (optional)  
+**Action:** Generates summary for previous Monday-Sunday  
+**Logging:** Creates activity log entry with action `scheduler.weekly_summary`
+
+**Equivalent manual operation:**
+```bash
+POST /api/summaries/generate
+Body: {"week_start": "2026-10-21", "week_end": "2026-10-27"}
+```
+
+### Activity Log
+
+Scheduler jobs log to activity log with `actor_type: "system"`:
+- `scheduler.daily_scoring` - successful daily refresh
+- `scheduler.daily_scoring_failed` - daily refresh error
+- `scheduler.weekly_summary` - successful weekly summary
+- `scheduler.weekly_summary_failed` - weekly summary error
+
+**Query scheduler logs:**
+```bash
+GET /api/activity
+```
+(Filter responses by `action` containing `scheduler`.)
+
+### Disabling
+
+Set `ENABLE_SCHEDULER=false` (default) to disable all automated jobs. The application works identically with manual operations.
+
+---
+
 ## Company Rules
 
 ### Get current rules

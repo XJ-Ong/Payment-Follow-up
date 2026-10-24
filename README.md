@@ -273,6 +273,46 @@ uv run pytest tests -q
 
 For standalone template browser checks on this Windows setup, set `$env:PLAYWRIGHT_CHANNEL='msedge'` before `npm run test:e2e`, or install the Playwright Chromium browser.
 
+## Scheduler (Optional)
+
+The system can automatically refresh priority scoring daily and generate weekly summaries. This is **optional** — all features work manually through their REST endpoints.
+
+### Enable Scheduler
+
+```bash
+# In .env
+ENABLE_SCHEDULER=true
+DAILY_CHECK_HOUR=9  # 9 AM Malaysia time
+```
+
+### Jobs
+
+**Daily Scoring Refresh:**
+- Runs at configured hour (default 9 AM MYT)
+- Calls `refresh_workspace()` to recalculate priority scores
+- Logs success/failure to activity log
+- Idempotent (safe to run multiple times)
+
+**Weekly Summary (Optional):**
+```bash
+ENABLE_WEEKLY_SUMMARY=true
+WEEKLY_SUMMARY_DAY=monday  # Day of week
+WEEKLY_SUMMARY_HOUR=9  # Hour in MYT
+```
+
+### Manual Alternative
+
+Without the scheduler:
+- **Refresh queue:** Click "Refresh Now" or `POST /api/followups/refresh`
+- **Generate summary:** `POST /api/summaries/generate`
+
+### Production Notes
+
+- Scheduler uses APScheduler (BackgroundScheduler)
+- Timezone-aware (Asia/Kuala_Lumpur)
+- Graceful shutdown on app stop
+- Job failures logged, don't crash app
+
 Module Progress
 
 ✅ Frontend layout & navigation
@@ -298,4 +338,4 @@ Module Progress
 ✅ Two-person high-value approval
 ✅ Holiday-aware overdue calculation
 ✅ AI drafting, explanations & summaries (template fallback functional)
-❌ Scheduled automation
+✅ Scheduled automation (optional, manual refresh available)
