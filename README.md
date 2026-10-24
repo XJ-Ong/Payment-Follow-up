@@ -297,5 +297,5 @@ Module Progress
 ✅ Backup Finance approval during leave
 ✅ Two-person high-value approval
 ✅ Holiday-aware overdue calculation
-❌ AI drafting, explanations & summaries
+✅ AI drafting, explanations & summaries (template fallback functional)
 ❌ Scheduled automation

@@ -266,6 +266,69 @@ returns `409` and the user must change the number.
 
 ---
 
+## AI Features
+
+Payment Follow-up uses AI to draft reminders, explain rankings, and generate weekly summaries. All AI features have template fallbacks and require human approval.
+
+### AI Drafting (AI-1)
+
+**How it works:**
+- System automatically generates draft reminders for invoices in Today's Queue
+- AI writes message in customer's preferred language and tone
+- Number verification ensures amounts/dates match exactly
+- Falls back to template if AI unavailable or verification fails
+- Draft marked with "AI-written" or "Template" tag
+
+**Metadata stored:**
+- `written_by`: "ai" or "template"
+- `ai_model`: model name (e.g., "meta-llama/Llama-2-7b-chat-hf")
+- `prompt_version`: version string for tracking
+- `verification_result`: number check details
+
+**Guardrails:**
+- AI never sends (approval required)
+- Numbers verified against source data
+- No legal threats or service disruption mentions
+- Template fallback on any failure
+
+### Ranking Explanations (AI-2)
+
+**Where used:** Dashboard and Today's Queue
+
+**Example:**
+> "BinaJaya Contractors has RM 15,000.00 outstanding for 10 days, scoring 150,000 RM-days above the alert threshold."
+
+Currently template-based (deterministic). Can be upgraded to AI in future.
+
+### Weekly Summary (AI-3)
+
+**Endpoint:** `POST /api/summaries/generate`
+
+**Request:**
+```json
+{
+  "week_start": "2026-10-21",
+  "week_end": "2026-10-27",
+  "language": "English"
+}
+```
+
+**Response:**
+```json
+{
+  "summary_id": "uuid"
+}
+```
+
+**Then fetch:** `GET /api/summaries/{summary_id}`
+
+Returns:
+- `metrics`: calculated numbers (code-driven)
+- `narrative`: AI-written paragraph (or template)
+- `written_by`: "ai" or "template"
+
+---
+
 ## Company Rules
 
 ### Get current rules
