@@ -202,7 +202,6 @@ def seed(reset: bool = False) -> None:
                 company_id=COMPANY_ID,
                 invoice_id=invoice_ids[row["invoice_no"]],
                 snapshot_id=None,  # no snapshot row for pre-existing history
-                prepared_by=FINANCE_ID,
                 version=1,
                 channel=CHANNEL[profile["preferred_channel"]],
                 language=LANGUAGE[profile["language"]],
