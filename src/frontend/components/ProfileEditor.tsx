@@ -17,7 +17,7 @@ export default function ProfileEditor({
   userId?: string;
   rules: SavedRules | null;
   onSave: (id: string, input: ProfileInput) => Promise<void>;
-  onClose: () => void;
+  onClose: (saved?: boolean) => void;
 }) {
   const [companyRules, setCompanyRules] = useState(rules);
   const [saved, setSaved] = useState<Profile | null>(null);
@@ -81,7 +81,7 @@ export default function ProfileEditor({
           setError('');
           try {
             await onSave(id, form);
-            onClose();
+            onClose(true);
           } catch (e) {
             setError(e instanceof Error ? e.message : 'Unable to save preferences');
             setConflict(e instanceof ApiError && e.status === 409);
@@ -213,8 +213,9 @@ export default function ProfileEditor({
           </fieldset>
         )}
         <p className="rule-note">
-          Changing message preferences or contact eligibility may invalidate existing
-          reminders. Their history will be retained.
+          Changes apply to future reminders for this customer. Changing message
+          preferences or contact eligibility may invalidate existing drafts and approvals.
+          Their history will be retained.
         </p>
         {error && <p role="alert">{error}</p>}
         {(conflict || (!form && !loading)) && (
@@ -231,7 +232,12 @@ export default function ProfileEditor({
           <p>Reload replaces the values in this form with the latest saved values.</p>
         )}
         <div className="drawer-actions">
-          <button type="button" className="button" disabled={busy} onClick={onClose}>
+          <button
+            type="button"
+            className="button"
+            disabled={busy}
+            onClick={() => onClose()}
+          >
             Cancel
           </button>
           <button

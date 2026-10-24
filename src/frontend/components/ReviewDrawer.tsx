@@ -1,3 +1,4 @@
+import RankingExplanation from './RankingExplanation';
 import WorkflowPanel from './WorkflowPanel';
 import type { DraftAction, DraftPayload, ActivityRecord } from '../workflowTypes';
 import { useState } from 'react';
@@ -38,7 +39,9 @@ export default function ReviewDrawer({
   onWorkflow,
   activity = [],
   userId,
+  onEditPreferences,
 }: {
+  onEditPreferences?: () => void;
   onWorkflow?: (action: DraftAction, payload: DraftPayload) => Promise<void>;
   activity?: ActivityRecord[];
   userId?: string;
@@ -198,6 +201,7 @@ export default function ReviewDrawer({
       drawer
     >
       <div className="drawer-body">
+        <RankingExplanation explanation={databaseMode ? i.explanation : null} />
         {databaseMode && onWorkflow && (
           <WorkflowPanel
             invoice={i}
@@ -205,6 +209,9 @@ export default function ReviewDrawer({
             userId={userId}
             activity={activity}
             onAction={onWorkflow}
+            onEditPreferences={
+              !saving && role !== 'Other Staff' ? onEditPreferences : undefined
+            }
           />
         )}
         {databaseMode ? (

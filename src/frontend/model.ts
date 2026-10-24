@@ -38,6 +38,7 @@ export type FollowupCalculation = {
   reason: string;
 };
 export type Invoice = {
+  explanation?: string | null;
   workflow?: Workflow;
   calculation?: FollowupCalculation;
   databaseId?: string;

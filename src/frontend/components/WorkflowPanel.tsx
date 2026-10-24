@@ -5,13 +5,40 @@ import { loadVersions } from '../api';
 import type { Invoice, Role } from '../model';
 import type { Draft, DraftAction, DraftPayload, ActivityRecord } from '../workflowTypes';
 
+function DraftSource({ draft }: { draft: Draft }) {
+  const label =
+    {
+      ai: 'AI-generated',
+      template: 'Template-generated',
+      human: 'Human-written',
+    }[draft.written_by] ?? 'Source unavailable';
+  const reason = draft.verification_result?.fallback_reason;
+  const failedAttempt =
+    typeof reason === 'string' &&
+    (reason === 'verification_failed' || reason.startsWith('ai_error:'));
+  return (
+    <div className="draft-source">
+      <span className="template-tag">{label}</span>
+      {draft.written_by === 'template' && (
+        <p className="text-caption">
+          {failedAttempt
+            ? 'AI could not produce a usable reminder. A template was used instead.'
+            : 'This reminder was prepared using a template.'}
+        </p>
+      )}
+    </div>
+  );
+}
+
 export default function WorkflowPanel({
   invoice,
   role,
   userId,
   activity,
   onAction,
+  onEditPreferences,
 }: {
+  onEditPreferences?: () => void;
   invoice: Invoice;
   role: Role;
   userId?: string;
@@ -110,6 +137,36 @@ export default function WorkflowPanel({
   return (
     <section className="detail-section workflow-panel">
       <h3>Reminder journey</h3>
+      {onEditPreferences && (
+        <section aria-label="Customer reminder preferences">
+          <h4>Customer preferences</h4>
+          <p>
+            {invoice.customer?.profile
+              ? `${invoice.customer.profile.language} ? ${invoice.customer.profile.tone} ? ${invoice.customer.profile.preferred_channel}`
+              : 'Preferences are not available. Open the editor to load saved values.'}
+          </p>
+          <button
+            className="button"
+            disabled={busy}
+            onClick={() => {
+              if (
+                !dirty ||
+                window.confirm(
+                  'Discard unsaved reminder text and edit customer preferences?',
+                )
+              ) {
+                onEditPreferences();
+              }
+            }}
+          >
+            Edit customer preferences
+          </button>
+          <p className="text-caption">
+            Changes apply to future reminders for this customer and may invalidate
+            existing drafts and approvals.
+          </p>
+        </section>
+      )}
       <ol className="journey-progress" aria-label="Reminder progress">
         {progress.map((step, index) => (
           <li
@@ -164,13 +221,19 @@ export default function WorkflowPanel({
           ))}
       </div>
       {!draft && invoice.calculation?.eligible && (
-        <button
-          className="button primary"
-          disabled={busy}
-          onClick={() => void act('create')}
-        >
-          {busy ? 'Preparing...' : 'Create template draft'}
-        </button>
+        <div>
+          <button
+            className="button primary"
+            disabled={busy}
+            onClick={() => void act('create')}
+          >
+            {busy ? 'Preparing...' : 'Create reminder draft'}
+          </button>
+          <p className="text-caption">
+            Uses AI when configured; otherwise uses a template. Review the message before
+            approval.
+          </p>
+        </div>
       )}
       {shown && (
         <>
@@ -178,6 +241,7 @@ export default function WorkflowPanel({
             Version {shown.version} - Prepared by {shown.author_name}
             {shown.historical ? ' - Historical record, not dispatchable' : ''}
           </p>
+          <DraftSource draft={shown} />
           <dl className="reminder-recipient">
             <div>
               <dt>Recipient</dt>
@@ -452,6 +516,7 @@ export default function WorkflowPanel({
               {v.historical ? ' (historical)' : ''}
             </strong>
             <p>{v.author_name}</p>
+            <DraftSource draft={v} />
             <pre style={{ whiteSpace: 'pre-wrap' }}>{v.body}</pre>
             <ul>
               {v.approvals.map((a) => (

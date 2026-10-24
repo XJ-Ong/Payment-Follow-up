@@ -709,7 +709,10 @@ export default function App() {
               userId={userId}
               rules={rules}
               onSave={updateProfile}
-              onClose={() => setEditingCustomer(null)}
+              onClose={(saved) => {
+                setEditingCustomer(null);
+                if (selected && !saved) void refresh(true);
+              }}
             />
           )}
           {adding && role !== 'Other Staff' && (
@@ -745,13 +748,16 @@ export default function App() {
               }}
             />
           )}
-          {current && role !== 'Other Staff' && (
+          {current && !editingCustomer && role !== 'Other Staff' && (
             <ReviewDrawer
               key={current.id}
               databaseMode={!demoMode}
               userId={userId}
               activity={activity}
               onWorkflow={workflowAction}
+              onEditPreferences={
+                !demoMode ? () => setEditingCustomer(current.customerId) : undefined
+              }
               onPayment={payInvoice}
               invoice={current}
               graceDays={getGraceDays(current, graceOverrides)}

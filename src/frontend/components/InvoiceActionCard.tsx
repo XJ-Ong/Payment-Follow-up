@@ -1,3 +1,4 @@
+import RankingExplanation from './RankingExplanation';
 import { useState } from 'react';
 import {
   Ban,
@@ -151,6 +152,7 @@ export default function InvoiceActionCard({
           </dl>
         </section>
 
+        <RankingExplanation explanation={i.explanation} />
         <details className="invoice-card-calculation">
           <summary>
             Priority calculation

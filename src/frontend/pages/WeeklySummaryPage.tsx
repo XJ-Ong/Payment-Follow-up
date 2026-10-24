@@ -1,3 +1,4 @@
+import WeeklyNarrative from '../components/WeeklyNarrative';
 import { useEffect, useState } from 'react';
 import {
   CalendarDays,
@@ -114,6 +115,15 @@ export default function WeeklySummaryPage({
           </button>
         </div>
       </section>
+      {!loading && !error && data && (role === 'Owner' || role === 'Finance') && (
+        <WeeklyNarrative
+          key={`${role}-${userId}-${data.week_start}-${data.period_end}`}
+          weekStart={data.week_start}
+          periodEnd={data.period_end}
+          role={role}
+          userId={userId}
+        />
+      )}
       {loading ? (
         <section className="card weekly-report-message" role="status">
           <Loader2 size={24} className="spin" aria-hidden="true" />

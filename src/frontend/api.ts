@@ -92,6 +92,7 @@ export type Dashboard = {
   ranking_ids: string[];
 };
 type ApiInvoice = {
+  explanation?: string | null;
   id: string;
   invoice_no: string;
   client_id: string;
@@ -145,6 +146,7 @@ export async function loadWorkspace(
       (row): Invoice => ({
         id: row.invoice_no,
         databaseId: row.id,
+        explanation: row.explanation,
         customerId: row.client_id,
         customer: data.customers.find((c) => c.id === row.client_id),
         total: Number(row.total_amount),
@@ -294,3 +296,34 @@ export function loadWeeklySummary(role: Role, userId?: string, weekStart?: strin
     userId,
   );
 }
+
+export type GeneratedSummary = {
+  id: string;
+  week_start: string;
+  week_end: string;
+  metrics: Record<string, unknown>;
+  narrative: string;
+  written_by: string;
+  generated_at: string;
+};
+export type SummaryLanguage = 'English' | 'Bahasa Malaysia';
+export const generateWeeklyNarrative = (
+  week_start: string,
+  week_end: string,
+  language: SummaryLanguage,
+  role: Role,
+  userId?: string,
+) =>
+  request<GeneratedSummary>(
+    '/summaries/generate',
+    role,
+    { week_start, week_end, language },
+    userId,
+  );
+export const getGeneratedSummary = (id: string, role: Role, userId?: string) =>
+  request<GeneratedSummary>(
+    `/summaries/${encodeURIComponent(id)}`,
+    role,
+    undefined,
+    userId,
+  );

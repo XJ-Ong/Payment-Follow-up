@@ -49,7 +49,7 @@ test('WhatsApp demo preferences and approved simulation persist without external
   await page.reload();
   await page.getByLabel('DEMO ROLE').selectOption('Finance');
   await openInvoice(page, number);
-  await page.getByRole('button', { name: 'Create template draft', exact: true }).click();
+  await page.getByRole('button', { name: 'Create reminder draft', exact: true }).click();
   await expect(page.getByRole('dialog')).toContainText(
     'Sending also records your approval.',
   );
@@ -138,7 +138,7 @@ for (const total of ['1000', '30000']) {
     await page.getByLabel('DEMO ROLE').selectOption('Finance');
     await openInvoice(page, number);
     await page
-      .getByRole('button', { name: 'Create template draft', exact: true })
+      .getByRole('button', { name: 'Create reminder draft', exact: true })
       .click();
     if (total === '30000') {
       await page
@@ -550,7 +550,7 @@ test('saved draft versions, standard approval and simulated outbox survive reloa
   await page.goto('/');
   await page.getByLabel('DEMO ROLE').selectOption('Finance');
   await openInvoice(page, 'WF-STANDARD');
-  await page.getByRole('button', { name: 'Create template draft', exact: true }).click();
+  await page.getByRole('button', { name: 'Create reminder draft', exact: true }).click();
   const body = page.getByLabel('Saved reminder text');
   const original = await body.inputValue();
   await body.fill(original + '\nPlease confirm receipt.');
@@ -625,7 +625,7 @@ test('high value requires Finance then Owner and edits reset approvals', async (
   await page.goto('/');
   await page.getByLabel('DEMO ROLE').selectOption('Finance');
   await openInvoice(page, 'WF-HIGH');
-  await page.getByRole('button', { name: 'Create template draft', exact: true }).click();
+  await page.getByRole('button', { name: 'Create reminder draft', exact: true }).click();
   await page
     .getByRole('button', { name: 'Submit for Finance approval', exact: true })
     .click();
@@ -677,7 +677,7 @@ test('backup Finance routing, Owner leave and payment invalidation', async ({
   await page.goto('/');
   await page.getByLabel('DEMO ROLE').selectOption('Finance');
   await openInvoice(page, 'WF-LEAVE');
-  await page.getByRole('button', { name: 'Create template draft', exact: true }).click();
+  await page.getByRole('button', { name: 'Create reminder draft', exact: true }).click();
   await page
     .getByRole('button', { name: 'Submit for Finance approval', exact: true })
     .click();
@@ -718,7 +718,7 @@ test('backup Finance routing, Owner leave and payment invalidation', async ({
   await openInvoice(page, 'WF-LEAVE');
   await expect(page.getByRole('dialog')).toContainText('Invalidated');
   await expect(
-    page.getByRole('button', { name: 'Create template draft', exact: true }),
+    page.getByRole('button', { name: 'Create reminder draft', exact: true }),
   ).toBeVisible();
 });
 
@@ -745,7 +745,7 @@ test('unified stages keep drafts visible, defer persists, and keyboard tabs work
   ).toHaveCount(0);
   const row = page.locator('.followup-row').filter({ hasText: 'WF-INVALID' });
   await row.getByRole('button', { name: 'Prepare reminder' }).click();
-  await page.getByRole('button', { name: 'Create template draft', exact: true }).click();
+  await page.getByRole('button', { name: 'Create reminder draft', exact: true }).click();
   await expect(page.getByRole('dialog')).toContainText('Next: Preview and simulate send');
   await closeDrawer(page);
   await expect(page.getByRole('tab', { name: /^Ready to send/ })).toHaveAttribute(
@@ -809,7 +809,7 @@ test('failed draft edits retain text and skip moves to Deferred across reload', 
     .click();
   const row = page.locator('.followup-row').filter({ hasText: 'QUEUE-SAFETY' });
   await row.getByRole('button', { name: 'Prepare reminder' }).click();
-  await page.getByRole('button', { name: 'Create template draft', exact: true }).click();
+  await page.getByRole('button', { name: 'Create reminder draft', exact: true }).click();
   const body = page.getByLabel('Saved reminder text');
   const edited = (await body.inputValue()) + '\nPlease confirm receipt.';
   await body.fill(edited);
@@ -932,7 +932,7 @@ test('customer preferences support cancel, failed saves, conflicts and reminder 
   await page.goto('/');
   await page.getByLabel('DEMO ROLE').selectOption('Finance');
   await openInvoice(page, number);
-  await page.getByRole('button', { name: 'Create template draft', exact: true }).click();
+  await page.getByRole('button', { name: 'Create reminder draft', exact: true }).click();
   await expect(page.getByRole('dialog')).toContainText(
     'Sending also records your approval.',
   );

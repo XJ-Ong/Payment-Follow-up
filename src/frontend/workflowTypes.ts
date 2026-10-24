@@ -32,6 +32,10 @@ export type Draft = {
   channel: string;
   language: string;
   tone: string;
+  written_by: 'ai' | 'template' | 'human';
+  ai_model: string | null;
+  prompt_version: string | null;
+  verification_result: { fallback_reason?: string; [key: string]: unknown } | null;
   recipient: string;
   prepared_by: string | null;
   author_name: string;
