@@ -19,3 +19,4 @@ artifacts/
 
 # Editor config
 .vscode/
+node_modules
