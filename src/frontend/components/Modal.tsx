@@ -7,12 +7,14 @@ export default function Modal({
   children,
   onClose,
   drawer = false,
+  wide = false,
 }: {
   title: string;
   subtitle: string;
   children: ReactNode;
   onClose: () => void;
   drawer?: boolean;
+  wide?: boolean;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const close = useRef(onClose);
@@ -63,7 +65,7 @@ export default function Modal({
         role="dialog"
         aria-modal="true"
         aria-labelledby="dialog-title"
-        className={drawer ? 'drawer' : 'modal'}
+        className={drawer ? 'drawer' : wide ? 'modal modal-wide' : 'modal'}
       >
         <div className="dialog-header">
           <div>

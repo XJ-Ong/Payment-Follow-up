@@ -1,4 +1,5 @@
 import type { Profile, ProfileInput, RulesInput } from './settingsTypes';
+import type { CsvPreview, CsvResult } from './csvTypes';
 import type { Customer, Invoice, Role, FollowupCalculation } from './model';
 
 import type {
@@ -20,6 +21,7 @@ export class ApiError extends Error {
   constructor(
     message: string,
     public status: number,
+    public data?: unknown,
   ) {
     super(message);
   }
@@ -30,6 +32,7 @@ export async function request<T>(
   role: Role,
   body?: unknown,
   userId?: string,
+  responseType: 'json' | 'text' = 'json',
 ): Promise<T> {
   const response = await fetch(`${baseUrl}/api${path}`, {
     method: body === undefined ? 'GET' : 'POST',
@@ -47,9 +50,10 @@ export async function request<T>(
         ? payload.detail
         : `Request failed (${response.status}). Check the form and try again.`,
       response.status,
+      payload,
     );
   }
-  return response.json();
+  return responseType === 'text' ? (response.text() as Promise<T>) : response.json();
 }
 export type SavedRules = {
   revision: number;
@@ -248,3 +252,10 @@ export function profileInput(p: Profile): ProfileInput {
     do_not_contact: p.do_not_contact,
   };
 }
+
+export const previewCsv = (csv_text: string, role: Role, userId?: string) =>
+  request<CsvPreview>('/invoices/import/preview', role, { csv_text }, userId);
+export const importCsv = (csv_text: string, role: Role, userId?: string) =>
+  request<CsvResult>('/invoices/import', role, { csv_text }, userId);
+export const csvTemplate = (role: Role, userId?: string) =>
+  request<string>('/invoices/import/template', role, undefined, userId, 'text');

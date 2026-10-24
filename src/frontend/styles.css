@@ -2623,3 +2623,101 @@ input[type='checkbox'] {
 .customer-profile > .button {
   margin: 12px 0;
 }
+
+.modal-wide {
+  width: 1000px;
+  max-width: 100%;
+}
+.invoice-import-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px;
+  margin-bottom: 18px;
+}
+.invoice-import-toolbar p {
+  margin-top: 6px;
+  color: #64748b;
+}
+.csv-import {
+  min-width: 0;
+}
+.csv-import > .button {
+  align-self: flex-start;
+}
+.csv-import label {
+  display: grid;
+  gap: 8px;
+}
+.csv-import input[type='file'] {
+  max-width: 100%;
+  border: 1px solid #dce4ee;
+  border-radius: 6px;
+  padding: 12px;
+}
+.csv-steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  list-style: none;
+  padding: 0;
+  color: #284fcb;
+  font-weight: 600;
+}
+.csv-customer {
+  display: grid;
+  gap: 4px;
+  padding: 10px 0;
+}
+.csv-customer code {
+  overflow-wrap: anywhere;
+}
+.csv-table-scroll {
+  overflow: auto;
+  max-height: 380px;
+  margin: 16px 0;
+  border: 1px solid #e2e8f0;
+}
+.csv-table-scroll table {
+  min-width: 750px;
+}
+.csv-table-scroll td {
+  white-space: normal;
+  vertical-align: top;
+  overflow-wrap: anywhere;
+}
+.csv-table-scroll th {
+  position: sticky;
+  top: 0;
+  background: #f5f7fb;
+}
+.csv-table-scroll td:nth-child(2) {
+  max-width: 220px;
+}
+.csv-table-scroll td:last-child {
+  min-width: 240px;
+}
+.csv-import [role='alert'] {
+  color: #b42318;
+}
+@media (max-width: 600px) {
+  .invoice-import-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .csv-import .dialog-footer {
+    flex-wrap: wrap;
+  }
+}
+
+.invoice-entry-options {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #e9edf4;
+  color: #64748b;
+}

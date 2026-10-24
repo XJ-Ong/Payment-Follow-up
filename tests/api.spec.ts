@@ -1,3 +1,4 @@
+import { readFile } from 'node:fs/promises';
 import { expect, test } from '@playwright/test';
 
 test('API invoice creation, payment and reload persist', async ({ page }) => {
@@ -698,4 +699,192 @@ test('Owner rules editing handles conflicts and persists while Finance remains r
     fullPage: true,
     animations: 'disabled',
   });
+});
+
+test('fixed CSV template download, row correction, atomic import and reload', async ({
+  page,
+  request,
+}) => {
+  await page.goto('/');
+  await page.getByLabel('DEMO ROLE').selectOption('Finance');
+  await page.getByRole('button', { name: 'Add Invoice', exact: true }).click();
+  await page
+    .getByRole('dialog')
+    .getByRole('button', { name: 'Import CSV', exact: true })
+    .click();
+  await expect(page.getByRole('dialog')).toHaveCount(1);
+  await expect(page.getByRole('dialog')).toHaveAccessibleName('Import invoices from CSV');
+  const downloadEvent = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Download CSV template', exact: true }).click();
+  const download = await downloadEvent;
+  expect(download.suggestedFilename()).toBe('invoice-template.csv');
+  const filePath = await download.path();
+  expect(filePath).toBeTruthy();
+  await page.getByLabel('CSV file', { exact: true }).setInputFiles({
+    name: download.suggestedFilename(),
+    mimeType: 'text/csv',
+    buffer: await readFile(filePath!),
+  });
+  await page.getByRole('button', { name: 'Preview CSV', exact: true }).click();
+  await expect(
+    page.getByRole('heading', { name: 'Preview: 1 valid, 0 invalid' }),
+  ).toBeVisible();
+  await page.getByRole('button', { name: 'Import 1 invoices', exact: true }).click();
+  await expect(page.getByRole('heading', { name: '1 invoices imported' })).toBeVisible();
+  await page.getByRole('button', { name: 'Done', exact: true }).click();
+  const headers = { 'X-Role': 'Finance' };
+  const loaded = await (
+    await request.get('http://127.0.0.1:8001/api/invoices', { headers })
+  ).json();
+  const customer = loaded.customers.find(
+    (c: { name: string }) => c.name === 'Kedai Kopi Harmoni',
+  );
+  const blocked = loaded.customers.find((c: { doNotContact: boolean }) => c.doNotContact);
+  const suffix = Date.now();
+  const due = new Date(`${loaded.as_of_date}T00:00:00Z`);
+  due.setUTCDate(due.getUTCDate() - 40);
+  const past = due.toISOString().slice(0, 10);
+  const future = new Date(`${loaded.as_of_date}T00:00:00Z`);
+  future.setUTCDate(future.getUTCDate() + 14);
+  const header =
+    'invoice_no,customer_id,issue_date,due_date,total_amount,initial_payment';
+  const rows = [
+    `CSV-${suffix}-PARTIAL,${customer.id},${past},${past},1000.10,100.10`,
+    `CSV-${suffix}-PAID,${customer.id},${past},${past},1000.10,1000.10`,
+    `CSV-${suffix}-FUTURE,${customer.id},${past},${future.toISOString().slice(0, 10)},1000.10,0`,
+    `CSV-${suffix}-BLOCKED,${blocked.id},${past},${past},1000.10,0`,
+  ];
+  const valid = header + '\r\n' + rows.join('\r\n');
+  const invalid = valid.replace(',1000.10,100.10', ',1000.10,1001.00');
+  await page.getByRole('button', { name: 'Import CSV', exact: true }).click();
+  const input = page.getByLabel('CSV file', { exact: true });
+  await input.setInputFiles({
+    name: 'invalid.csv',
+    mimeType: 'text/csv',
+    buffer: Buffer.from(invalid),
+  });
+  await page.getByRole('button', { name: 'Preview CSV', exact: true }).click();
+  await expect(
+    page.getByRole('heading', { name: 'Preview: 3 valid, 1 invalid' }),
+  ).toBeVisible();
+  await expect(page.getByRole('dialog')).toContainText('Payment exceeds invoice total');
+  await expect(
+    page.getByRole('button', { name: 'Import 3 invoices', exact: true }),
+  ).toBeDisabled();
+  const before = await (
+    await request.get('http://127.0.0.1:8001/api/invoices', { headers })
+  ).json();
+  expect(before.invoices).toHaveLength(loaded.invoices.length);
+  await input.setInputFiles({
+    name: 'corrected.csv',
+    mimeType: 'text/csv',
+    buffer: Buffer.from(valid),
+  });
+  await expect(
+    page.getByRole('region', { name: 'CSV preview', exact: true }),
+  ).toHaveCount(0);
+  await page.getByRole('button', { name: 'Preview CSV', exact: true }).click();
+  await expect(
+    page.getByRole('heading', { name: 'Preview: 4 valid, 0 invalid' }),
+  ).toBeVisible();
+  await page.getByRole('button', { name: 'Import 4 invoices', exact: true }).click();
+  await expect(page.getByRole('heading', { name: '4 invoices imported' })).toBeVisible();
+  await page.getByRole('button', { name: 'Done', exact: true }).click();
+  await page.reload();
+  await openInvoice(page, `CSV-${suffix}-PARTIAL`);
+  await expect(page.getByRole('dialog')).toContainText('MYR 900.00');
+  await closeDrawer(page);
+  const workspace = await (
+    await request.get('http://127.0.0.1:8001/api/followups', { headers })
+  ).json();
+  const imported = workspace.invoices.filter((i: { invoice_no: string }) =>
+    i.invoice_no.startsWith(`CSV-${suffix}`),
+  );
+  expect(imported).toHaveLength(4);
+  for (const i of imported)
+    expect(workspace.queue_ids.includes(i.id)).toBe(i.invoice_no.endsWith('-PARTIAL'));
+  await page.getByRole('button', { name: 'Import CSV', exact: true }).click();
+  await input.setInputFiles({
+    name: 'same.csv',
+    mimeType: 'text/csv',
+    buffer: Buffer.from(valid),
+  });
+  await page.getByRole('button', { name: 'Preview CSV', exact: true }).click();
+  await expect(
+    page.getByRole('heading', { name: 'Preview: 0 valid, 4 invalid' }),
+  ).toBeVisible();
+  await expect(page.getByRole('dialog')).toContainText('already exists');
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(
+    await page
+      .getByRole('dialog')
+      .evaluate((node) => node.scrollWidth <= node.clientWidth),
+  ).toBe(true);
+  await page.screenshot({
+    path: 'test-results/csv-mobile.png',
+    fullPage: true,
+    animations: 'disabled',
+  });
+});
+
+test('CSV encoding errors and stale preview conflicts keep the import review open', async ({
+  page,
+  request,
+}) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Invoices & Payments', exact: true }).click();
+  await page.getByRole('button', { name: 'Import CSV', exact: true }).click();
+  const input = page.getByLabel('CSV file', { exact: true });
+  await input.setInputFiles({
+    name: 'bad.csv',
+    mimeType: 'text/csv',
+    buffer: Buffer.from([0xff, 0xfe, 0x41]),
+  });
+  await expect(page.getByRole('dialog').getByRole('alert')).toContainText('UTF-8');
+  await input.setInputFiles({
+    name: 'large.csv',
+    mimeType: 'text/csv',
+    buffer: Buffer.alloc(1024 * 1024 + 1, 65),
+  });
+  await expect(page.getByRole('dialog').getByRole('alert')).toContainText('1 MiB');
+  const headers = { 'X-Role': 'Owner' };
+  const loaded = await (
+    await request.get('http://127.0.0.1:8001/api/invoices', { headers })
+  ).json();
+  const customer = loaded.customers[0];
+  const number = `CSV-CONFLICT-${Date.now()}`;
+  const text = `invoice_no,customer_id,issue_date,due_date,total_amount,initial_payment\n${number},${customer.id},2026-10-01,2026-10-23,1000.00,0`;
+  await input.setInputFiles({
+    name: 'conflict.csv',
+    mimeType: 'text/csv',
+    buffer: Buffer.from(text),
+  });
+  await page.getByRole('button', { name: 'Preview CSV', exact: true }).click();
+  await expect(
+    page.getByRole('heading', { name: 'Preview: 1 valid, 0 invalid' }),
+  ).toBeVisible();
+  expect(
+    (
+      await request.post('http://127.0.0.1:8001/api/invoices', {
+        headers,
+        data: {
+          invoice_no: number,
+          client_id: customer.id,
+          issue_date: '2026-10-01',
+          due_date: '2026-10-23',
+          total_amount: '1000.00',
+        },
+      })
+    ).ok(),
+  ).toBeTruthy();
+  await page.getByRole('button', { name: 'Import 1 invoices', exact: true }).click();
+  await expect(page.getByRole('dialog').getByRole('alert')).toContainText(
+    'No invoices were saved',
+  );
+  await expect(
+    page.getByRole('heading', { name: 'Preview: 0 valid, 1 invalid' }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: 'Import 0 invoices', exact: true }),
+  ).toBeDisabled();
 });

@@ -17,6 +17,7 @@ export default function InvoicesPage({
   onApply,
   onReset,
   onAdd,
+  onImport,
   onReview,
   onRetry,
   error,
@@ -31,6 +32,7 @@ export default function InvoicesPage({
   onApply: () => void;
   onReset: () => void;
   onAdd: () => void;
+  onImport?: () => void;
   onReview: (id: string) => void;
   onRetry: () => void;
   error: boolean;
@@ -38,6 +40,20 @@ export default function InvoicesPage({
 }) {
   return (
     <>
+      {onImport && (
+        <section className="card invoice-import-toolbar">
+          <div>
+            <strong>Bulk invoice entry</strong>
+            <p>
+              Upload the fixed CSV template, review every row, then import all invoices
+              together.
+            </p>
+          </div>
+          <button className="button" disabled={loading} onClick={onImport}>
+            Import CSV
+          </button>
+        </section>
+      )}
       <InvoiceFilters
         filters={filters}
         setFilters={setFilters}

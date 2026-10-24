@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import { Plus, ShieldCheck } from 'lucide-react';
+import { Plus, ShieldCheck, Upload } from 'lucide-react';
 import { type Customer, type Invoice, validateInvoice } from '../model';
 import Modal from './Modal';
 
@@ -8,11 +8,13 @@ export default function AddInvoiceDialog({
   onClose,
   onAdd,
   invoices,
+  onImport,
 }: {
   customers: Customer[];
   onClose: () => void;
   onAdd: (i: Invoice, issueDate: string) => Promise<void>;
   invoices: Invoice[];
+  onImport?: () => void;
 }) {
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
@@ -51,6 +53,15 @@ export default function AddInvoiceDialog({
       onClose={onClose}
     >
       <form onSubmit={submit} className="dialog-body">
+        {onImport && (
+          <div className="invoice-entry-options">
+            <span>Adding multiple invoices?</span>
+            <button type="button" className="button" onClick={onImport} disabled={saving}>
+              <Upload size={15} />
+              Import CSV
+            </button>
+          </div>
+        )}
         <label>
           Invoice number
           <input

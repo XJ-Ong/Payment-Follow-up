@@ -1,3 +1,4 @@
+import CsvImportDialog from './components/CsvImportDialog';
 import RulesEditor from './pages/RulesEditor';
 import ProfileEditor from './components/ProfileEditor';
 import type { ProfileInput, RulesInput } from './settingsTypes';
@@ -9,6 +10,7 @@ import {
   createInvoice,
   recordPayment,
   changeDraft,
+  importCsv,
   saveRules,
   saveProfile,
   type SettingsResult,
@@ -76,6 +78,7 @@ export default function App() {
   const [filters, setFilters] = useState<Filters>(cleanFilters);
   const [applied, setApplied] = useState<Filters>(cleanFilters);
   const [adding, setAdding] = useState(false);
+  const [importing, setImporting] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -168,6 +171,7 @@ export default function App() {
     setSelected(null);
     setEditingCustomer(null);
     setAdding(false);
+    setImporting(false);
     toast.info(`Demo role changed to ${nextRole}.`, { id: 'role-change' });
   }
 
@@ -191,6 +195,7 @@ export default function App() {
       await refresh();
     }
     setAdding(false);
+    setImporting(false);
     record(`${invoice.id}: invoice added.`, demoMode);
   }
 
@@ -262,6 +267,36 @@ export default function App() {
     }
   }
 
+  async function importInvoices(text: string) {
+    const identity = identityGeneration.current;
+    const result = await importCsv(text, role, userId);
+    if (identity !== identityGeneration.current) return result.imported_count;
+    const generation = ++requestGeneration.current;
+    setLoading(false);
+    try {
+      const data = await loadWorkspace(role, false, userId, result.workspace);
+      if (
+        identity === identityGeneration.current &&
+        generation === requestGeneration.current
+      ) {
+        applyWorkspace(data);
+        setError(false);
+        navigate('Invoices & Payments');
+      }
+    } catch {
+      if (
+        identity === identityGeneration.current &&
+        generation === requestGeneration.current
+      ) {
+        setError(true);
+        toast.warning(
+          'Invoices were imported, but the workspace could not reload. Retry refresh to display the saved records.',
+        );
+      }
+    }
+    return result.imported_count;
+  }
+
   async function applySettingsSave(saving: Promise<SettingsResult>, identity: number) {
     const result = await saving;
     if (identity !== identityGeneration.current) return result;
@@ -303,6 +338,7 @@ export default function App() {
     setSelected(null);
     setEditingCustomer(null);
     setAdding(false);
+    setImporting(false);
   }
 
   function updateStatus(invoice: Invoice, status: Status, reminder: string) {
@@ -466,6 +502,11 @@ export default function App() {
       default:
         return (
           <InvoicesPage
+            onImport={
+              !demoMode && active === 'Invoices & Payments'
+                ? () => setImporting(true)
+                : undefined
+            }
             view={active}
             visible={visible}
             totalCount={invoices.length}
@@ -515,6 +556,16 @@ export default function App() {
       overlays={
         <>
           <Toast />
+          {importing && !demoMode && role !== 'Other Staff' && (
+            <CsvImportDialog
+              key={`${role}-${userId}`}
+              customers={customers}
+              role={role}
+              userId={userId}
+              onImport={importInvoices}
+              onClose={() => setImporting(false)}
+            />
+          )}
           {editingCustomer && role !== 'Other Staff' && (
             <ProfileEditor
               key={`${editingCustomer}-${role}-${userId}`}
@@ -528,6 +579,14 @@ export default function App() {
           )}
           {adding && role !== 'Other Staff' && (
             <AddInvoiceDialog
+              onImport={
+                !demoMode
+                  ? () => {
+                      setAdding(false);
+                      setImporting(true);
+                    }
+                  : undefined
+              }
               customers={customers}
               invoices={invoices}
               onClose={() => setAdding(false)}

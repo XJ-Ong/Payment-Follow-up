@@ -96,6 +96,7 @@ export function activityLabel(action: string) {
   const labels: Record<string, string> = {
     'rules.updated': 'Company rules updated',
     'customer.profile_updated': 'Customer preferences updated',
+    'invoices.csv_imported': 'CSV invoices imported',
     'invoice.created': 'Invoice created',
     'payment.recorded': 'Payment recorded',
     'draft.version_created': 'Draft version saved',

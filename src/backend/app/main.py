@@ -9,7 +9,6 @@ from zoneinfo import ZoneInfo
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response, JSONResponse
-from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import func, select, text
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
@@ -24,6 +23,9 @@ from .services import workflow
 from .followup_schemas import WorkspaceView, RuleView, SettingsSaveView
 from .settings_schemas import ProfileInput, ProfileView, RulesInput
 from .services import settings
+from .services import invoices as invoice_ops, csv_import
+from .services.invoices import InvoiceInput, PaymentInput
+from .csv_schemas import CsvInput, CsvPreview, CsvImportResult
 from .services.followups import ConfigurationError, lock_rule, refresh_workspace, read_workspace
 
 app = FastAPI(title="Payment Follow-up")
@@ -64,33 +66,8 @@ def get_role(x_role: Annotated[str | None, Header()] = None,
 
 DB = Annotated[Session, Depends(get_db)]
 Role = Annotated[AppUser, Depends(get_role)]
-Money = Annotated[Decimal, Field(gt=0, max_digits=12, decimal_places=2)]
-
-class InvoiceInput(BaseModel):
-    invoice_no: str = Field(min_length=1, max_length=50, pattern=r".*\S.*")
-    client_id: UUID
-    issue_date: date
-    due_date: date
-    total_amount: Money
-    initial_payment: Decimal = Field(default=Decimal("0"), ge=0, max_digits=12, decimal_places=2)
-
-    @model_validator(mode="after")
-    def validate_dates_and_payment(self):
-        self.invoice_no = self.invoice_no.strip()
-        if self.due_date < self.issue_date:
-            raise ValueError("Due date must be on or after issue date")
-        if self.initial_payment > self.total_amount:
-            raise ValueError("Payment exceeds invoice total")
-        return self
-
-class PaymentInput(BaseModel):
-    amount: Money
-    received_date: date
-    payment_type: Literal["deposit", "partial", "full"] = "partial"
-    reference_number: str | None = Field(default=None, max_length=100)
-
 def paid(db, invoice):
-    return db.scalar(select(func.coalesce(func.sum(PaymentRecord.amount), 0)).where(PaymentRecord.invoice_id == invoice.id, PaymentRecord.company_id == COMPANY))
+    return invoice_ops.paid(db,COMPANY,invoice)
 
 def customer(db, client):
     profile = db.get(ClientFollowupProfile, client.id)
@@ -104,11 +81,7 @@ def customer(db, client):
     return dict(id=str(client.id), name=client.name, contact=client.email or client.phone or "", initials="".join(n[0] for n in client.name.split()[:2]), color="blue", graceDays=(rule.grace_days_by_tier.get(tier, 0) if rule else 0), doNotContact=profile.do_not_contact if valid else False)
 
 def serialize(db, invoice):
-    payments = paid(db, invoice)
-    return dict(id=str(invoice.id), invoice_no=invoice.invoice_no, client_id=str(invoice.client_id), issue_date=invoice.issue_date.isoformat(), due_date=invoice.due_date.isoformat(), total_amount=format(invoice.total_amount, ".2f"), payments=format(payments, ".2f"), outstanding_amount=format(max(Decimal("0.00"), invoice.total_amount-payments), ".2f"), status=invoice.status)
-
-def audit(db, role, action, invoice):
-    db.add(ActivityLog(id=uuid4(), company_id=COMPANY, actor_type="user", actor_id=role.id, action=action, entity_type="invoice", entity_id=invoice.id, after_state=serialize(db, invoice)))
+    return invoice_ops.serialize(db,COMPANY,invoice)
 
 def commit(db):
     try:
@@ -132,37 +105,15 @@ def invoices(db: DB, role: Role):
 
 @app.post("/api/invoices", status_code=201)
 def create_invoice(data: InvoiceInput, db: DB, role: Role):
-    try:
-        client = adapter.get_client(data.client_id)
-    except LookupError:
-        raise HTTPException(422, "Unknown customer") from None
-    if client.company_id != COMPANY:
-        raise HTTPException(422, "Unknown customer")
     lock_rule(db, COMPANY)
-    invoice = Invoice(id=uuid4(), company_id=COMPANY, client_id=data.client_id, invoice_no=data.invoice_no, issue_date=data.issue_date, due_date=data.due_date, total_amount=data.total_amount, source="manual", status="open")
-    db.add(invoice)
     try:
-        db.flush()
+        invoice = invoice_ops.create(db,COMPANY,adapter,role,data)
+        refresh_workspace(db, COMPANY, adapter, role.id)
+        commit(db)
+        return serialize(db, invoice)
     except IntegrityError:
         db.rollback()
         raise HTTPException(409, "Invoice number already exists") from None
-    if data.initial_payment:
-        add_payment(db, invoice, PaymentInput(amount=data.initial_payment, received_date=data.issue_date, payment_type="deposit"), role)
-    audit(db, role, "invoice.created", invoice)
-    refresh_workspace(db, COMPANY, adapter, role.id)
-    commit(db)
-    return serialize(db, invoice)
-
-def add_payment(db, invoice, data, role):
-    balance = invoice.total_amount - paid(db, invoice)
-    if invoice.status == "void" or data.amount > balance:
-        raise HTTPException(422, "Payment exceeds outstanding balance or invoice is void")
-    if data.payment_type == "full" and data.amount != balance:
-        raise HTTPException(422, "Full payment must equal outstanding balance")
-    db.add(PaymentRecord(id=uuid4(), company_id=COMPANY, invoice_id=invoice.id, amount=data.amount, received_date=data.received_date, payment_type=data.payment_type, reference_number=data.reference_number, recorded_by=role.id))
-    invoice.status = "paid" if data.amount == balance else "partially_paid"
-    db.flush()
-    audit(db, role, "payment.recorded", invoice)
 
 @app.post("/api/invoices/{invoice_id}/payments", status_code=201)
 def record_payment(invoice_id: UUID, data: PaymentInput, db: DB, role: Role):
@@ -170,7 +121,7 @@ def record_payment(invoice_id: UUID, data: PaymentInput, db: DB, role: Role):
     invoice = db.scalar(select(Invoice).where(Invoice.id == invoice_id, Invoice.company_id == COMPANY).with_for_update())
     if invoice is None:
         raise HTTPException(404, "Invoice not found")
-    add_payment(db, invoice, data, role)
+    invoice_ops.add_payment(db,COMPANY,invoice,data,role)
     refresh_workspace(db, COMPANY, adapter, role.id)
     commit(db)
     return serialize(db, invoice)
@@ -307,3 +258,30 @@ def save_customer_profile(client_id: UUID, data: ProfileInput, db: DB, role: Rol
 @app.post('/api/settings/rules', response_model=SettingsSaveView)
 def save_rules(data: RulesInput, db: DB, role: Role):
     return save_configuration(db,role,data)
+
+
+@app.get('/api/invoices/import/template')
+def invoice_csv_template(role: Role):
+    return Response(csv_import.template(COMPANY,adapter),media_type='text/csv',headers={'Content-Disposition':'attachment; filename="invoice-template.csv"'})
+
+@app.post('/api/invoices/import/preview', response_model=CsvPreview)
+def preview_invoice_csv(data: CsvInput, db: DB, role: Role):
+    return csv_import.preview(db,COMPANY,adapter,data.csv_text)
+
+@app.post('/api/invoices/import', response_model=CsvImportResult)
+def import_invoice_csv(data: CsvInput, db: DB, role: Role):
+    try:
+        count, workspace = csv_import.import_invoices(db,COMPANY,adapter,role,data.csv_text)
+        result = CsvImportResult(imported_count=count,workspace=personalize(db,workspace,role))
+        db.commit()
+        return result
+    except csv_import.InvalidImport as error:
+        db.rollback()
+        return JSONResponse(status_code=409,content={'detail':'Fix all CSV errors before importing. No invoices were saved.','preview':error.preview.model_dump(mode='json')})
+    except IntegrityError:
+        db.rollback()
+        checked = csv_import.preview(db,COMPANY,adapter,data.csv_text)
+        return JSONResponse(status_code=409,content={'detail':'Import conflicted with another write. No invoices were saved. Preview again before importing.','preview':checked.model_dump(mode='json')})
+    except Exception:
+        db.rollback()
+        raise
