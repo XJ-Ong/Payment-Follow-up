@@ -9,6 +9,7 @@
     "preview": "vite preview --host 0.0.0.0",
     "test": "node --experimental-strip-types --test src/frontend/model.test.ts",
     "test:e2e": "playwright test",
+    "test:weekly": "playwright test --config playwright.weekly.config.ts",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
   },

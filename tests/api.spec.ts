@@ -50,14 +50,8 @@ test('WhatsApp demo preferences and approved simulation persist without external
   await page.getByLabel('DEMO ROLE').selectOption('Finance');
   await openInvoice(page, number);
   await page.getByRole('button', { name: 'Create template draft', exact: true }).click();
-  await page
-    .getByRole('button', { name: 'Submit for Finance approval', exact: true })
-    .click();
-  await page
-    .getByRole('button', { name: 'Approve current version', exact: true })
-    .click();
   await expect(page.getByRole('dialog')).toContainText(
-    'Approved preview - simulated delivery only',
+    'Sending also records your approval.',
   );
   await page.getByRole('button', { name: 'Simulate send', exact: true }).click();
   await expect(page.getByRole('dialog')).toContainText('Simulated dispatch saved');
@@ -146,13 +140,14 @@ for (const total of ['1000', '30000']) {
     await page
       .getByRole('button', { name: 'Create template draft', exact: true })
       .click();
-    await page
-      .getByRole('button', { name: 'Submit for Finance approval', exact: true })
-      .click();
-    await page
-      .getByRole('button', { name: 'Approve current version', exact: true })
-      .click();
     if (total === '30000') {
+      await page
+        .getByRole('button', { name: 'Submit for Finance approval', exact: true })
+        .click();
+      await page
+        .getByRole('button', { name: 'Approve current version', exact: true })
+        .click();
+
       await expect(page.getByRole('dialog')).toContainText('Awaiting Owner approval');
       await closeDrawer(page);
       await page.getByLabel('DEMO ROLE').selectOption('Owner');
@@ -161,10 +156,10 @@ for (const total of ['1000', '30000']) {
         .getByRole('button', { name: 'Approve current version', exact: true })
         .click();
     }
-    await expect(page.getByRole('dialog')).toContainText(
-      'Approved preview - real Telegram delivery',
-    );
-    const body = await page.locator('.approved-message pre').innerText();
+    const body =
+      total === '30000'
+        ? await page.locator('.approved-message pre').innerText()
+        : await page.getByLabel('Saved reminder text').inputValue();
     const calls = await (
       await request.get('http://127.0.0.1:8001/__test/telegram')
     ).json();
@@ -577,20 +572,16 @@ test('saved draft versions, standard approval and simulated outbox survive reloa
     .getByRole('navigation')
     .getByRole('button', { name: 'Follow-ups', exact: true })
     .click();
-  await page.getByRole('tab', { name: /^Drafts/ }).click();
+  await page.getByRole('tab', { name: /^Ready to send/ }).click();
   await page
     .locator('.followup-row')
     .filter({ hasText: 'WF-STANDARD' })
-    .getByRole('button', { name: 'Continue draft' })
+    .getByRole('button', { name: 'Preview and send' })
     .click();
   await expect(body).toHaveValue(original + '\nPlease confirm receipt.');
-  await page
-    .getByRole('button', { name: 'Submit for Finance approval', exact: true })
-    .click();
-  await page
-    .getByRole('button', { name: 'Approve current version', exact: true })
-    .click();
-  await expect(page.getByRole('dialog')).toContainText('Approved preview');
+  await expect(page.getByRole('dialog')).toContainText(
+    'Sending also records your approval.',
+  );
   await page.getByRole('button', { name: 'Simulate send', exact: true }).click();
   await expect(page.getByRole('dialog')).toContainText('Simulated dispatch saved');
   await closeDrawer(page);
@@ -755,15 +746,13 @@ test('unified stages keep drafts visible, defer persists, and keyboard tabs work
   const row = page.locator('.followup-row').filter({ hasText: 'WF-INVALID' });
   await row.getByRole('button', { name: 'Prepare reminder' }).click();
   await page.getByRole('button', { name: 'Create template draft', exact: true }).click();
-  await expect(page.getByRole('dialog')).toContainText(
-    'Next: Submit for Finance approval',
-  );
+  await expect(page.getByRole('dialog')).toContainText('Next: Preview and simulate send');
   await closeDrawer(page);
-  await expect(page.getByRole('tab', { name: /^Drafts/ })).toHaveAttribute(
+  await expect(page.getByRole('tab', { name: /^Ready to send/ })).toHaveAttribute(
     'aria-selected',
     'true',
   );
-  await row.getByRole('button', { name: 'Continue draft' }).click();
+  await row.getByRole('button', { name: 'Preview and send' }).click();
   await page.getByRole('button', { name: 'More actions', exact: true }).click();
   await page.getByRole('button', { name: 'Snooze', exact: true }).click();
   await page.getByLabel('Snooze until (Malaysia date)').fill('2099-01-01');
@@ -784,7 +773,7 @@ test('unified stages keep drafts visible, defer persists, and keyboard tabs work
   const ready = page.getByRole('tab', { name: /^Ready / }).first();
   await ready.focus();
   await page.keyboard.press('ArrowRight');
-  await expect(page.getByRole('tab', { name: /^Drafts/ })).toBeFocused();
+  await expect(page.getByRole('tab', { name: /^Ready to send/ })).toBeFocused();
   await page.getByRole('tab', { name: /^Deferred/ }).click();
   await expect(row).toContainText('2099-01-01');
   await page.setViewportSize({ width: 390, height: 844 });
@@ -944,13 +933,9 @@ test('customer preferences support cancel, failed saves, conflicts and reminder 
   await page.getByLabel('DEMO ROLE').selectOption('Finance');
   await openInvoice(page, number);
   await page.getByRole('button', { name: 'Create template draft', exact: true }).click();
-  await page
-    .getByRole('button', { name: 'Submit for Finance approval', exact: true })
-    .click();
-  await page
-    .getByRole('button', { name: 'Approve current version', exact: true })
-    .click();
-  await expect(page.getByRole('dialog')).toContainText('Approved preview');
+  await expect(page.getByRole('dialog')).toContainText(
+    'Sending also records your approval.',
+  );
   await closeDrawer(page);
   await page.getByRole('button', { name: 'Customer Profiles', exact: true }).click();
   const card = page

@@ -10,6 +10,12 @@ export const stages = [
 export type FollowupStage = (typeof stages)[number];
 export function invoiceStage(invoice: Invoice, asOf: string): FollowupStage | null {
   const status = invoice.workflow?.current?.status;
+  if (
+    invoice.workflow?.current?.required_approvals === 1 &&
+    status &&
+    ['draft', 'pending_approval', 'pending_second_approval', 'approved'].includes(status)
+  )
+    return 'Ready to send';
   if (status === 'draft') return 'Drafts';
   if (status?.startsWith('pending')) return 'Awaiting approval';
   if (status === 'approved') return 'Ready to send';
@@ -38,6 +44,10 @@ export function nextStep(invoice: Invoice): string {
       ? 'Prepare reminder by Finance or Owner'
       : 'Review eligibility and history';
   if (draft.waiting_reason) return draft.waiting_reason;
+  if (draft.required_approvals === 1)
+    return draft.channel === 'Telegram'
+      ? 'Preview and send via Telegram by Finance or Owner'
+      : 'Preview and simulate send by Finance or Owner';
   if (draft.status === 'draft') return 'Submit for Finance approval by Finance or Owner';
   if (draft.status === 'approved')
     return draft.channel === 'Telegram'

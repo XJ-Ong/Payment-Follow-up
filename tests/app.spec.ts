@@ -42,7 +42,9 @@ test('desktop filters, invoice validation and simulated approval reconcile', asy
   );
   await expect(page.locator('.summary-card').first()).toContainText('MYR 45,080.00');
   await page.getByRole('button', { name: 'INV-2026-042', exact: true }).click();
+  await expect(page.locator('#invoice-action-card')).toBeVisible();
   await expect(page.getByRole('dialog')).toContainText('262,500');
+  await page.getByRole('button', { name: 'Review follow-up', exact: true }).click();
   await page.getByRole('button', { name: 'Approve simulated send' }).click();
   await expect(page.getByRole('dialog')).toContainText('Simulated sent');
   await page.getByRole('button', { name: 'Close dialog' }).click();
@@ -56,23 +58,28 @@ test('role restrictions, draft text retention and do-not-contact blocking', asyn
   await page.goto('/');
   await page.getByLabel('DEMO ROLE').selectOption('Finance');
   await page.getByRole('button', { name: 'INV-2026-042', exact: true }).click();
+  await page.getByRole('button', { name: 'Review follow-up', exact: true }).click();
   await expect(
     page.getByRole('button', { name: 'Approve simulated send' }),
   ).toBeEnabled();
   await page.getByRole('button', { name: 'Close dialog' }).click();
   await page.getByRole('button', { name: 'INV-2026-041', exact: true }).click();
+  await page.getByRole('button', { name: 'Review follow-up', exact: true }).click();
   await page.getByLabel('Reminder text').fill('A custom template reminder for the demo.');
   await page.getByRole('button', { name: 'Submit for review' }).click();
   await page.getByRole('button', { name: 'Close dialog' }).click();
   await page.getByRole('button', { name: 'INV-2026-041', exact: true }).click();
+  await page.getByRole('button', { name: 'Review follow-up', exact: true }).click();
   await expect(page.getByLabel('Reminder text')).toHaveValue(
     'A custom template reminder for the demo.',
   );
   await page.getByRole('button', { name: 'Close dialog' }).click();
   await page.getByRole('button', { name: 'INV-2026-044', exact: true }).click();
-  await expect(page.getByRole('dialog')).toContainText(
-    'This customer is marked do not contact',
-  );
+  await expect(page.locator('#invoice-action-card')).toBeVisible();
+  await expect(page.getByRole('dialog')).toContainText('Do not contact');
+  await expect(
+    page.getByRole('button', { name: 'Review follow-up', exact: true }),
+  ).toBeDisabled();
   await expect(page.getByRole('button', { name: 'Prepare draft' })).toHaveCount(0);
   await page.getByRole('button', { name: 'Close dialog' }).click();
   await page.getByLabel('DEMO ROLE').selectOption('Other Staff');
@@ -203,4 +210,63 @@ test('invoice sorting changes row order and reset restores priority', async ({
   await page.getByRole('button', { name: 'Reset', exact: true }).click();
   await expect(sort).toHaveValue('priority');
   expect(await links.allTextContents()).toEqual(original);
+});
+
+test('dashboard ranking and invoice list share the invoice details card', async ({
+  page,
+}) => {
+  await page.goto('/');
+  const invoice = page.getByRole('button', { name: 'INV-2026-042', exact: true });
+  await invoice.click();
+  const card = page.locator('#invoice-action-card');
+  await expect(card).toBeVisible();
+  await expect(page.locator('.drawer')).toHaveCount(0);
+  const calculation = card.locator('.invoice-card-calculation');
+  await expect(calculation).not.toHaveAttribute('open');
+  await calculation.locator('summary').focus();
+  await page.keyboard.press('Enter');
+  await expect(calculation).toHaveAttribute('open', '');
+  await expect(calculation).toContainText('max(0, 24 ? 3) = 21 days');
+  await expect(calculation).toContainText('MYR 12,500.00 ? 21 days = 262,500 RM-days');
+  await page.keyboard.press('Enter');
+  await expect(calculation).not.toHaveAttribute('open');
+  const details = await card.locator('.invoice-card-grid').first().innerText();
+  await expect(
+    card.getByRole('button', { name: 'Record payment', exact: true }),
+  ).toBeEnabled();
+  await page.keyboard.press('Escape');
+  await expect(invoice).toBeFocused();
+  await page.getByRole('button', { name: 'Invoices & Payments', exact: true }).click();
+  await invoice.click();
+  await expect(card.locator('.invoice-card-grid').first()).toHaveText(details, {
+    useInnerText: true,
+  });
+  await page.keyboard.press('Escape');
+  await page.getByRole('button', { name: 'Dashboard', exact: true }).click();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page
+    .locator('tbody tr')
+    .filter({ hasText: 'INV-2026-042' })
+    .getByRole('button', { name: 'Review', exact: true })
+    .click();
+  await expect(card).toBeVisible();
+  expect(
+    await page
+      .getByRole('dialog')
+      .evaluate((node) => node.scrollWidth <= node.clientWidth),
+  ).toBe(true);
+  await card.getByRole('button', { name: 'Review follow-up', exact: true }).click();
+  await expect(card).toHaveCount(0);
+  await expect(page.locator('.drawer')).toBeVisible();
+});
+
+test('weekly summary explains missing dated payment history in lightweight demo', async ({
+  page,
+}) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Weekly Summary', exact: true }).click();
+  await expect(page.getByRole('main')).toContainText(
+    'Dated payment history is unavailable in this demo.',
+  );
+  await expect(page.locator('.summary-card')).toHaveCount(0);
 });

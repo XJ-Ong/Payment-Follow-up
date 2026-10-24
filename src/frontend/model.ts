@@ -261,7 +261,11 @@ export function getGraceDays(invoice: Invoice, overrides: GraceOverrides): numbe
 }
 
 export function getTotalOutstanding(invoices: Invoice[]): number {
-  return invoices.reduce((total, invoice) => total + outstanding(invoice), 0);
+  return invoices.reduce(
+    (total, invoice) =>
+      invoice.financialStatus === 'void' ? total : total + outstanding(invoice),
+    0,
+  );
 }
 
 export function getInvoiceTotals(invoices: Invoice[]): InvoiceTotals {

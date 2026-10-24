@@ -28,7 +28,7 @@ export default function CustomerBalanceChart({
           <small>Total</small>
         </span>
         <span className="chart-note">
-          Includes do-not-contact customers
+          Excludes void invoices; includes do-not-contact customers
         </span>
       </div>
       {data.length === 0 ? (

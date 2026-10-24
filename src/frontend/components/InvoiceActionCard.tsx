@@ -2,6 +2,7 @@ import { useState } from 'react';
 import {
   Ban,
   CreditCard,
+  ChevronDown,
   MessageSquareText,
   ShieldCheck,
   TriangleAlert,
@@ -13,6 +14,7 @@ import {
   money,
   dateLabel,
   canApprove,
+  REFERENCE_DATE,
   getInvoiceCustomer,
   type Invoice,
   type Role,
@@ -44,6 +46,11 @@ export default function InvoiceActionCard({
   const isVoid = i.financialStatus === 'void';
   const isPaid = !isVoid && balance <= 0;
   const allowed = canApprove(role);
+  const overdueDays = daysOverdue(i);
+  const appliedGraceDays = i.calculation?.grace_days ?? graceDays;
+  const effectiveDays =
+    i.calculation?.effective_days ?? Math.max(0, overdueDays - appliedGraceDays);
+  const score = priority(i, appliedGraceDays).toLocaleString('en-MY');
   const [panel, setPanel] = useState<Panel>(null);
   const [reason, setReason] = useState('');
   const [confirming, setConfirming] = useState(false);
@@ -143,6 +150,72 @@ export default function InvoiceActionCard({
             </div>
           </dl>
         </section>
+
+        <details className="invoice-card-calculation">
+          <summary>
+            Priority calculation
+            <ChevronDown size={16} aria-hidden="true" />
+          </summary>
+          <div className="invoice-card-calculation-body">
+            {isVoid ? (
+              <p>Void invoices are excluded from priority rankings and follow-up.</p>
+            ) : (
+              <>
+                <p>Priority score = outstanding balance ? effective overdue days.</p>
+                <dl className="invoice-card-grid">
+                  <div>
+                    <dt>Outstanding balance</dt>
+                    <dd>{money(balance)}</dd>
+                  </div>
+                  <div>
+                    <dt>Days overdue</dt>
+                    <dd>{overdueDays} days</dd>
+                  </div>
+                  <div>
+                    <dt>Grace period</dt>
+                    <dd>{appliedGraceDays} days</dd>
+                  </div>
+                  <div>
+                    <dt>Effective overdue days</dt>
+                    <dd>
+                      max(0, {overdueDays} ? {appliedGraceDays}) = {effectiveDays} days
+                    </dd>
+                  </div>
+                </dl>
+                <p className="invoice-card-calculation-result">
+                  {money(balance)} ? {effectiveDays} days ={' '}
+                  <strong>{score} RM-days</strong>
+                </p>
+                <p>
+                  Calculated as of {dateLabel(i.asOf ?? REFERENCE_DATE)}. Effective
+                  overdue days cannot be below zero.
+                </p>
+                {i.calculation && (
+                  <>
+                    <p>
+                      Public holidays excluded:{' '}
+                      {i.calculation.holidays_excluded.map(dateLabel).join(', ') ||
+                        'None'}
+                      . Weekends count.
+                    </p>
+                    {i.calculation.exclusion_reasons.length > 0 && (
+                      <ul aria-label="Follow-up exclusions">
+                        {i.calculation.exclusion_reasons.map((reason) => (
+                          <li key={reason}>{reason}</li>
+                        ))}
+                      </ul>
+                    )}
+                  </>
+                )}
+                {!i.calculation && c.doNotContact && (
+                  <p>
+                    This customer is marked do not contact and is excluded from follow-up.
+                  </p>
+                )}
+              </>
+            )}
+          </div>
+        </details>
 
         <div className="invoice-card-actions" role="group" aria-label="Invoice actions">
           <button

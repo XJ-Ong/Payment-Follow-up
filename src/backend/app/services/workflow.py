@@ -97,7 +97,7 @@ def validate_body(body, facts):
 
 def assigned(draft, adapter, today):
     policy = draft.approval_policy
-    if draft.status not in ("pending_approval", "pending_second_approval"):
+    if policy.get("required_approvals") == 1 or draft.status not in ("pending_approval", "pending_second_approval"):
         return None, None
     if draft.status == "pending_second_approval":
         owner = UUID(policy["owner_id"])
@@ -131,14 +131,18 @@ def draft_view(db, draft, adapter, actor=None, now=None):
     delivery = db.scalar(select(DeliveryAttempt).where(DeliveryAttempt.company_id == draft.company_id, DeliveryAttempt.draft_id == draft.id))
     if actor is not None and actor.company_id == draft.company_id and actor.role in ("owner", "finance") and draft.is_current and not draft.is_legacy:
         actions = ["versions", "skip", "snooze"]
-        if draft.status == "draft":
-            actions.append("submit")
-        if draft.status in ("pending_approval", "pending_second_approval") and assignee == actor.id:
-            actions.append("approve")
-        if draft.status in ("pending_approval", "pending_second_approval", "approved") and first_assigned(draft, adapter, today) == actor.id:
-            actions.append("edit-approve")
-        if draft.status == "approved":
-            actions.append("send")
+        if draft.approval_policy.get("required_approvals") == 1:
+            if draft.status in ACTIVE:
+                actions.append("send")
+        else:
+            if draft.status == "draft":
+                actions.append("submit")
+            if draft.status in ("pending_approval", "pending_second_approval") and assignee == actor.id:
+                actions.append("approve")
+            if draft.status in ("pending_approval", "pending_second_approval", "approved") and first_assigned(draft, adapter, today) == actor.id:
+                actions.append("edit-approve")
+            if draft.status == "approved":
+                actions.append("send")
     if delivery and draft.status != "sent":
         if delivery.status in ("sending", "unknown"):
             actions = []
@@ -148,6 +152,7 @@ def draft_view(db, draft, adapter, actor=None, now=None):
             actions = [a for a in actions if a != "send"]
             waiting = "Telegram rejected the attempt or could not connect. Correct the setup, then edit and save a fresh version for approval before trying again."
     approvals = db.scalars(select(Approval).where(Approval.company_id == draft.company_id, Approval.draft_id == draft.id).order_by(Approval.approval_step)).all()
+    sender_approval = any(a.context.get("approval_mode") == "send" for a in approvals)
     return dict(id=str(draft.id), invoice_id=str(draft.invoice_id), invoice_no=invoice.invoice_no, version=draft.version,
         status=draft.status, body=draft.body, channel=draft.channel, language=draft.language, tone=draft.tone,
         recipient=draft.facts.get("recipient", ""), prepared_by=str(draft.prepared_by) if draft.prepared_by else None,
@@ -156,7 +161,7 @@ def draft_view(db, draft, adapter, actor=None, now=None):
         required_approvals=draft.approval_policy.get("required_approvals", 0), assigned_approver_id=str(assignee) if assignee else None,
         assigned_approver_name=user_name(adapter, assignee) if assignee else None, waiting_reason=waiting,
         delivery={key: getattr(delivery,key) for key in ("id","status","provider_message_id","error_code","retry_after_seconds","started_at","finished_at")} if delivery else None,
-        allowed_actions=actions, approvals=[dict(id=str(a.id), approver_id=str(a.approver_id), approver_name=user_name(adapter,a.approver_id), approval_step=a.approval_step, decision=a.decision, decided_at=a.decided_at, historical=a.is_legacy) for a in approvals])
+        allowed_actions=actions, approvals=[dict(id=str(a.id), approver_id=str(a.approver_id), approver_name=user_name(adapter,a.approver_id), approval_step=a.approval_step, decision=a.decision, decided_at=a.decided_at, historical=a.is_legacy or (sender_approval and a.context.get("approval_mode") != "send")) for a in approvals])
 
 
 def workflow_views(db, company, adapter, actor=None, now=None):
@@ -324,15 +329,29 @@ def mutate(db,company,adapter,actor,draft_id,action,data,now=None):
         draft.status, draft.is_current = ("skipped" if action == "skip" else "snoozed"),False
         audit(db,company,actor.id,f"draft.{draft.status}",invoice.id,draft,dict(reason=data.reason,until=until.isoformat()),now)
     elif action == "send":
-        approvals = db.scalars(select(Approval).where(Approval.company_id == company,Approval.draft_id == draft.id,Approval.is_legacy.is_(False)).order_by(Approval.approval_step)).all()
+        validate_body(draft.body, draft.facts)
+        if not draft.facts.get("recipient"):
+            raise WorkflowError("Customer has no contact for the selected channel", 422)
         required = draft.approval_policy["required_approvals"]
-        valid = len(approvals) == required and len({a.approver_id for a in approvals}) == required
-        for a in approvals:
-            expected = {draft.approval_policy["finance_id"],draft.approval_policy["backup_finance_id"]} if a.approval_step == 1 else {draft.approval_policy["owner_id"]}
-            valid = valid and str(a.approver_id) in expected and a.decision in ("approve","edit_approve") and a.context.get("content_digest") == digest(draft) and a.context.get("assigned_to") == str(a.approver_id)
-        if not valid:
-            audit(db,company,actor.id,"send.blocked",invoice.id,draft,dict(reason="Required version-bound approvals are missing"),now)
-            raise WorkflowError("Required approvals are invalid or missing",persist=True)
+        if required == 1:
+            # Append the sender's effective approval; earlier decisions remain immutable.
+            db.add(Approval(id=uuid4(), company_id=company, draft_id=draft.id,
+                approver_id=actor.id, approval_step=1, decision="approve", is_legacy=False,
+                context={"approval_mode": "send", "role": actor.role,
+                         "assigned_to": str(actor.id), "content_digest": digest(draft)}, decided_at=now))
+            draft.status = "approved"
+            audit(db,company,actor.id,"draft.approved",invoice.id,draft,
+                  dict(step=1, approval_mode="send"),now)
+            db.flush()
+        else:
+            approvals = db.scalars(select(Approval).where(Approval.company_id == company,Approval.draft_id == draft.id,Approval.is_legacy.is_(False)).order_by(Approval.approval_step)).all()
+            valid = len(approvals) == required and len({a.approver_id for a in approvals}) == required
+            for a in approvals:
+                expected = {draft.approval_policy["finance_id"],draft.approval_policy["backup_finance_id"]} if a.approval_step == 1 else {draft.approval_policy["owner_id"]}
+                valid = valid and str(a.approver_id) in expected and a.decision in ("approve","edit_approve") and a.context.get("content_digest") == digest(draft) and a.context.get("assigned_to") == str(a.approver_id)
+            if not valid:
+                audit(db,company,actor.id,"send.blocked",invoice.id,draft,dict(reason="Required version-bound approvals are missing"),now)
+                raise WorkflowError("Required approvals are invalid or missing",persist=True)
         if draft.channel == "Telegram":
             # Only delivery.dispatch may claim, commit and perform the external request.
             validate_body(draft.body,draft.facts)

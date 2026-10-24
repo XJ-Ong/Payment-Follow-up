@@ -249,13 +249,16 @@ class ReminderDraft(Base):
 class Approval(Base):
     __tablename__ = "approval"
     __table_args__ = (
-        UniqueConstraint("draft_id", "approval_step", name="uq_approval_draft_step"),
+        Index("uq_approval_draft_step", "draft_id", "approval_step", unique=True,
+              postgresql_where=text("coalesce(context->>'approval_mode', '') <> 'send'")),
+        Index("uq_approval_sender", "draft_id", unique=True,
+              postgresql_where=text("context->>'approval_mode' = 'send'")),
         CheckConstraint("approval_step IN (1, 2)", name="ck_approval_approval_step"),
         CheckConstraint("decision IN ('approve', 'edit_approve', 'skip', 'snooze')", name="ck_approval_decision"),
         CheckConstraint("decision <> 'snooze' OR snooze_until IS NOT NULL", name="ck_approval_snooze_until"),
         Index("ix_approval_draft_id", "draft_id"),
         Index("uq_approval_distinct_actor", "draft_id", "approver_id", unique=True,
-              postgresql_where=text("NOT is_legacy AND decision IN ('approve', 'edit_approve')")),
+              postgresql_where=text("NOT is_legacy AND decision IN ('approve', 'edit_approve') AND coalesce(context->>'approval_mode', '') <> 'send'")),
     )
 
     id: Mapped[UUID] = _uuid_pk()

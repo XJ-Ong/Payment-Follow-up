@@ -197,7 +197,8 @@ export default function AppLayout({
                   )}
                 </section>
               )}
-              {(totals.ready === undefined || active === 'Dashboard') && (
+              {((totals.ready === undefined && active !== 'Weekly Summary') ||
+                active === 'Dashboard') && (
                 <>
                   {active !== 'Dashboard' && (
                     <ContextBanner reviewCount={totals.alerts ?? totals.review} />
@@ -209,9 +210,11 @@ export default function AppLayout({
                 </>
               )}
               {children}
-              {totals.ready === undefined && active !== 'Dashboard' && (
-                <CustomerBalanceChart data={balances} total={totalOutstanding} />
-              )}
+              {totals.ready === undefined &&
+                active !== 'Dashboard' &&
+                active !== 'Weekly Summary' && (
+                  <CustomerBalanceChart data={balances} total={totalOutstanding} />
+                )}
               <footer className="page-footer">
                 <span>
                   <ShieldCheck size={14} />

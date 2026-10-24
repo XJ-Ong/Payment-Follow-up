@@ -63,7 +63,7 @@ def test_existing_baseline():
         command.upgrade(config, "head")
         with engine.connect() as c:
             assert c.scalar(text("SELECT invoice_no FROM invoice")) == "KEEP-ME"
-            assert c.scalar(text("SELECT version_num FROM alembic_version")) == "0007"
+            assert c.scalar(text("SELECT version_num FROM alembic_version")) == "0008"
 
 
 def test_schema_drift():

@@ -19,7 +19,11 @@ export default function PageHeader({
       <div>
         <div className="eyebrow">ACCOUNTS RECEIVABLE</div>
         <h1>{heading}</h1>
-        <p>Prioritise follow-ups and approve reminders.</p>
+        <p>
+          {heading === 'Weekly Summary'
+            ? 'Track payments received, settled invoices, and customer collections.'
+            : 'Prioritise follow-ups and approve reminders.'}
+        </p>
       </div>
       <div className="header-actions">
         <button className="button" onClick={onRefresh} disabled={loading}>

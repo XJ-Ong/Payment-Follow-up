@@ -69,6 +69,19 @@ def uuid_from(value):
 def approved(engine, total="1000", adapter=ADAPTER):
     invoice_id = invoice(engine,total)
     draft = create(engine,invoice_id,adapter=adapter)
+    if draft["required_approvals"] == 1:
+        # Existing pre-upgrade approved drafts remain sendable; retain their history.
+        with Session(engine) as db:
+            row = db.get(ReminderDraft, uuid_from(draft["id"]))
+            row.status = "approved"
+            from app.services.workflow import digest
+            db.add(Approval(id=uuid4(), company_id=COMPANY, draft_id=row.id,
+                approver_id=FINANCE.id, approval_step=1, decision="approve", is_legacy=False,
+                context={"content_digest": digest(row), "assigned_to": str(FINANCE.id), "role": "finance"}))
+            db.flush()
+            result = draft_view(db,row,adapter,FINANCE,NOW)
+            db.commit()
+            return invoice_id,result
     draft = act(engine,draft,"submit",adapter=adapter)
     first = BACKUP if adapter.list_approved_leave(FINANCE.id,TODAY) else FINANCE
     draft = act(engine,draft,"approve",actor=first,adapter=adapter)
@@ -117,6 +130,11 @@ def test_exact_high_value_boundary_and_order(world,amount,count):
     engine,_ = world
     draft = create(engine,invoice(engine,amount),actor=OWNER)
     assert draft["required_approvals"] == count
+    if count == 1:
+        sent = act(engine,draft,"send",actor=OWNER)
+        assert sent["status"] == "sent"
+        assert sent["approvals"][0]["approver_id"] == str(OWNER.id)
+        return
     draft = act(engine,draft,"submit",actor=OWNER)
     with pytest.raises(WorkflowError) as error:
         act(engine,draft,"approve",actor=OWNER)
@@ -254,7 +272,7 @@ def test_send_rechecks_facts_and_eligibility_and_records_block(world,change):
 
 def test_duplicate_create_approve_and_send_concurrency(world):
     engine,_ = world
-    invoice_id = invoice(engine)
+    invoice_id = invoice(engine,"30000")
     def create_once(_):
         try:
             return create(engine,invoice_id)
@@ -274,6 +292,7 @@ def test_duplicate_create_approve_and_send_concurrency(world):
         results = list(pool.map(approve_once,range(2)))
     draft = next(d for d in results if d)
     assert sum(d is not None for d in results) == 1
+    draft = act(engine,draft,"approve",actor=OWNER)
     with ThreadPoolExecutor(max_workers=2) as pool:
         list(pool.map(lambda _: act(engine,draft,"send"),range(2)))
     with Session(engine) as db:
@@ -423,3 +442,62 @@ def test_seed_reset_can_reapply_workflow_migrations_and_preserves_authorship():
             assert db.scalar(select(func.count()).select_from(Invoice)) == 20
             assert db.scalar(select(FollowupRule)).owner_approver_id == OWNER.id
             assert all(d.prepared_by == FINANCE.id and d.is_legacy for d in db.scalars(select(ReminderDraft)))
+
+
+@pytest.mark.parametrize("actor", [FINANCE, BACKUP, OWNER])
+@pytest.mark.parametrize("pending", [False, True])
+def test_single_approval_sender_approves_without_assignment_or_leave(world, actor, pending):
+    engine,_ = world
+    adapter = MockOrbyteAdapter(demo_leave_active=True, demo_owner_leave_active=True, reference_date=TODAY)
+    draft = create(engine,invoice(engine),actor=OWNER,adapter=adapter)
+    if pending:
+        with Session(engine) as db:
+            db.get(ReminderDraft,uuid_from(draft["id"])).status = "pending_approval"
+            db.commit()
+    with Session(engine) as db:
+        view = draft_view(db,db.get(ReminderDraft,uuid_from(draft["id"])),adapter,actor,NOW)
+        assert "send" in view["allowed_actions"]
+        assert not {"submit", "approve", "edit-approve"}.intersection(view["allowed_actions"])
+        assert view["assigned_approver_id"] is None and view["waiting_reason"] is None
+    sent = act(engine,draft,"send",actor=actor,adapter=adapter)
+    assert sent["status"] == "sent"
+    effective = [a for a in sent["approvals"] if not a["historical"]]
+    assert len(effective) == 1 and effective[0]["approver_id"] == str(actor.id)
+    act(engine,sent,"send",actor=OWNER,adapter=adapter)
+    with Session(engine) as db:
+        assert db.scalar(select(func.count()).select_from(Approval)) == 1
+        event = db.scalar(select(ActivityLog).where(ActivityLog.action == "draft.approved"))
+        assert event.actor_id == actor.id and event.after_state["approval_mode"] == "send"
+        event = db.scalar(select(ActivityLog).where(ActivityLog.action == "reminder.simulated_sent"))
+        assert event.actor_id == actor.id
+
+
+def test_single_approval_replaces_effective_approver_preserving_history(world):
+    engine,_ = world
+    _,draft = approved(engine)
+    sent = act(engine,draft,"send",actor=OWNER)
+    assert len(sent["approvals"]) == 2
+    assert [a["approver_id"] for a in sent["approvals"] if not a["historical"]] == [str(OWNER.id)]
+    assert any(a["historical"] and a["approver_id"] == str(FINANCE.id) for a in sent["approvals"])
+
+
+def test_single_approval_concurrent_send_records_one_approval(world):
+    engine,_ = world
+    draft = create(engine,invoice(engine))
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        list(pool.map(lambda actor: act(engine,draft,"send",actor=actor), [FINANCE, OWNER]))
+    with Session(engine) as db:
+        assert db.scalar(select(func.count()).select_from(Approval)) == 1
+        assert db.scalar(select(func.count()).select_from(SendLog)) == 1
+
+
+def test_single_approval_edit_requires_saved_version_and_staff_cannot_send(world):
+    engine,_ = world
+    draft = create(engine,invoice(engine))
+    edited = act(engine,draft,"versions",actor=OWNER,body=draft["body"]+"\nPlease confirm receipt.")
+    with pytest.raises(WorkflowError):
+        act(engine,draft,"send")
+    staff = FINANCE.model_copy(update={"role": "other_staff"})
+    with pytest.raises(WorkflowError):
+        act(engine,edited,"send",actor=staff)
+    assert act(engine,edited,"send",actor=OWNER)["status"] == "sent"

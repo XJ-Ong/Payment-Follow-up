@@ -43,11 +43,11 @@ def telegram(engine):
         db.commit()
 
 
-def send(engine,draft,sender,now=NOW):
+def send(engine,draft,sender,now=NOW,actor=FINANCE):
     with Session(engine) as db:
         try:
-            result = delivery.dispatch(db,COMPANY,ADAPTER,FINANCE,draft['id'],DraftMutation(version=draft['version']),now=now,sender=sender)
-            view = workflow.draft_view(db,result,ADAPTER,FINANCE,now)
+            result = delivery.dispatch(db,COMPANY,ADAPTER,actor,draft['id'],DraftMutation(version=draft['version']),now=now,sender=sender)
+            view = workflow.draft_view(db,result,ADAPTER,actor,now)
             db.commit()
             return view
         except workflow.WorkflowError as error:
@@ -311,3 +311,31 @@ def test_whatsapp_approved_journey_is_simulated_without_external_delivery(setup,
         assert db.scalar(select(func.count()).select_from(SendLog)) == 1
         assert db.scalar(select(SendLog.status)) == 'simulated'
         assert db.scalar(select(func.count()).select_from(DeliveryAttempt)) == 0
+
+
+@pytest.mark.parametrize("actor", [FINANCE, OWNER])
+@pytest.mark.parametrize("outcome", ["sent", "failed", "unknown"])
+def test_single_approval_fresh_telegram_draft_records_sender_once(setup, actor, outcome):
+    _,engine,_ = setup
+    telegram(engine)
+    draft = create(engine,invoice(engine),actor=OWNER)
+    class Sender:
+        calls = 0
+        def send(self, message):
+            self.calls += 1
+            return DeliveryResult(channel="Telegram", status=outcome,
+                provider_message_id="123" if outcome == "sent" else None,
+                error_code=None if outcome == "sent" else "test_failure")
+    sender = Sender()
+    result = send(engine,draft,sender,actor=actor)
+    assert result["delivery"]["status"] == outcome
+    assert (result["status"] == "sent") == (outcome == "sent")
+    assert len(result["approvals"]) == 1
+    assert result["approvals"][0]["approver_id"] == str(actor.id)
+    send(engine,draft,sender,actor=OWNER)
+    assert sender.calls == 1
+    with Session(engine) as db:
+        assert db.scalar(select(func.count()).select_from(Approval)) == 1
+        attempt = db.scalar(select(DeliveryAttempt))
+        assert attempt.initiated_by == actor.id
+        assert db.scalar(select(func.count()).select_from(SendLog)) == (1 if outcome == "sent" else 0)

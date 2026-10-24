@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import {
   canTransition,
   getVisibleInvoices,
+  getCustomerBalances,
+  getTotalOutstanding,
   getGraceDays,
   cleanFilters,
   isRole,
@@ -149,6 +151,43 @@ describe('saved follow-up results', () => {
         'all',
       ).length,
       1,
+    );
+  });
+});
+
+describe('customer outstanding balances', () => {
+  it('excludes void invoices from customer balances and the chart total', () => {
+    const customer = customers[0];
+    const records: Invoice[] = [
+      {
+        ...initialInvoices[0],
+        id: 'OPEN',
+        customerId: customer.id,
+        total: 1000,
+        payments: 250,
+      },
+      {
+        ...initialInvoices[0],
+        id: 'VOID',
+        customerId: customer.id,
+        total: 9000,
+        payments: 0,
+        financialStatus: 'void',
+      },
+      {
+        ...initialInvoices[0],
+        id: 'PAID',
+        customerId: customer.id,
+        total: 100,
+        payments: 100,
+        financialStatus: 'paid',
+      },
+    ];
+    const balances = getCustomerBalances(records, [{ ...customer, doNotContact: true }]);
+    expect(balances[0].balance).toBe(750);
+    expect(getTotalOutstanding(records)).toBe(750);
+    expect(getTotalOutstanding(records.filter((i) => i.financialStatus === 'void'))).toBe(
+      0,
     );
   });
 });

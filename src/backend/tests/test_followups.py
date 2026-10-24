@@ -83,6 +83,9 @@ def test_rank_queue_totals_and_invoice_spacing(store):
     assert rows["INV-A"]["calculation"]["exclusion_reasons"][0].startswith("Reminder spacing")
     assert not rows["DNC"]["calculation"]["eligible"]
     assert result["dashboard"]["total_outstanding"] == "10800.00"
+    balances = {c["customer_id"]: c["balance"] for c in result["dashboard"]["customer_balances"]}
+    assert balances[str(external_uuid("CLI-01"))] == "5700.00"
+    assert balances[str(external_uuid("CLI-07"))] == "5000.00"
     assert result["dashboard"]["total_overdue"] == "10700.00"
     assert result["dashboard"]["alert_count"] == 2
     assert all(a["recipient_id"] == str(FINANCE) for a in result["alerts"])

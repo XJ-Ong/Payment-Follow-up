@@ -201,7 +201,12 @@ export function recordPayment(
   );
 }
 
-export function voidInvoice(invoice: Invoice, role: Role, reason: string, userId?: string) {
+export function voidInvoice(
+  invoice: Invoice,
+  role: Role,
+  reason: string,
+  userId?: string,
+) {
   return request(`/invoices/${invoice.databaseId}/void`, role, { reason }, userId);
 }
 
@@ -279,3 +284,13 @@ export const csvTemplate = (role: Role, userId?: string) =>
 
 export const csvReferences = (role: Role, userId?: string) =>
   request<CsvReference[]>('/invoices/import/references', role, undefined, userId);
+
+export function loadWeeklySummary(role: Role, userId?: string, weekStart?: string) {
+  const query = weekStart ? `?week_start=${encodeURIComponent(weekStart)}` : '';
+  return request<import('./weeklySummaryTypes').WeeklySummary>(
+    `/reports/weekly-summary${query}`,
+    role,
+    undefined,
+    userId,
+  );
+}

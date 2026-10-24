@@ -18,6 +18,7 @@ from .db.session import SessionLocal
 from .ids import external_uuid
 from .orbyte.mock import MockOrbyteAdapter
 from .orbyte.schemas import AppUser
+from .report_schemas import WeeklySummary
 from .workflow_schemas import DraftMutation, DraftView, OutboxView, ActivityView, WorkflowView
 from .services import workflow, delivery
 from .services import audit as audit_ops
@@ -91,6 +92,17 @@ def commit(db):
     except IntegrityError:
         db.rollback()
         raise HTTPException(409, "Invoice number already exists or record conflicts") from None
+
+@app.get("/api/reports/weekly-summary", response_model=WeeklySummary)
+def weekly_summary_report(db: DB, role: Role, week_start: date | None = None):
+    from .services.reports import weekly_summary
+    try:
+        return weekly_summary(db, COMPANY, adapter, week_start)
+    except ConfigurationError as error:
+        raise HTTPException(409, str(error)) from None
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from None
+
 
 @app.get("/api/health")
 def health(db: DB):

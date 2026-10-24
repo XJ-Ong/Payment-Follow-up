@@ -250,7 +250,9 @@ export default function App() {
     if (demoMode) {
       setInvoices((previous) =>
         previous.map((existing) =>
-          existing.id === invoice.id ? { ...existing, financialStatus: 'void' } : existing,
+          existing.id === invoice.id
+            ? { ...existing, financialStatus: 'void' }
+            : existing,
         ),
       );
       record(`${invoice.id}: invoice voided (${reason}).`);
@@ -566,7 +568,15 @@ export default function App() {
           <AuditPage key={`${role}-${userId}`} role={role} userId={userId} />
         );
       case 'Weekly Summary':
-        return <WeeklySummaryPage totals={totals} />;
+        return (
+          <WeeklySummaryPage
+            key={`${role}-${userId}`}
+            role={role}
+            userId={userId}
+            invoices={invoices}
+            onReview={setCardId}
+          />
+        );
       default:
         return (
           <InvoicesPage
@@ -584,7 +594,11 @@ export default function App() {
             onApply={() => setApplied({ ...filters })}
             onReset={resetFilters}
             onAdd={() => setAdding(true)}
-            onReview={active === 'Invoices & Payments' ? setCardId : setSelected}
+            onReview={
+              active === 'Dashboard' || active === 'Invoices & Payments'
+                ? setCardId
+                : setSelected
+            }
             onRetry={retryConnection}
             error={error}
             loading={loading}

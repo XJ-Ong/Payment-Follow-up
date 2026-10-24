@@ -68,42 +68,45 @@ export default function WorkflowPanel({
   const shown = draft ?? latest;
   const dirty = !!draft && text !== draft.body;
   const allowed = draft?.allowed_actions ?? [];
+  const singleApproval = shown?.required_approvals === 1;
   const primary = dirty
     ? allowed.includes('versions')
       ? 'versions'
       : null
-    : draft?.status === 'draft'
-      ? allowed.includes('submit')
-        ? 'submit'
-        : null
-      : allowed.includes('approve')
-        ? 'approve'
-        : allowed.includes('send')
-          ? 'send'
-          : null;
+    : allowed.includes('send')
+      ? 'send'
+      : draft?.status === 'draft'
+        ? allowed.includes('submit')
+          ? 'submit'
+          : null
+        : allowed.includes('approve')
+          ? 'approve'
+          : allowed.includes('send')
+            ? 'send'
+            : null;
   const labels: Record<string, string> = {
     versions: 'Save draft',
     submit: 'Submit for Finance approval',
     approve: 'Approve current version',
     send: draft?.channel === 'Telegram' ? 'Send via Telegram' : 'Simulate send',
   };
-  const progress = [
-    'Prepare',
-    'Finance approval',
-    ...(shown?.required_approvals === 2 ? ['Owner approval'] : []),
-    'Ready to send',
-    'Sent',
-  ];
+  const progress = singleApproval
+    ? ['Prepare', 'Send', 'Sent']
+    : ['Prepare', 'Finance approval', 'Owner approval', 'Ready to send', 'Sent'];
   const position =
     shown?.status === 'sent'
       ? progress.length - 1
-      : shown?.status === 'approved'
-        ? progress.length - 2
-        : shown?.status === 'pending_second_approval'
-          ? 2
-          : shown?.status === 'pending_approval'
-            ? 1
-            : 0;
+      : singleApproval
+        ? dirty || !draft
+          ? 0
+          : 1
+        : shown?.status === 'approved'
+          ? progress.length - 2
+          : shown?.status === 'pending_second_approval'
+            ? 2
+            : shown?.status === 'pending_approval'
+              ? 1
+              : 0;
   return (
     <section className="detail-section workflow-panel">
       <h3>Reminder journey</h3>
@@ -122,7 +125,9 @@ export default function WorkflowPanel({
       <div className="journey-next" role="status">
         <strong>
           {draft
-            ? reminderStatus(draft.status)
+            ? singleApproval && !draft.delivery
+              ? 'Ready to send'
+              : reminderStatus(draft.status)
             : latest
               ? reminderStatus(latest.status)
               : invoice.calculation?.eligible
@@ -138,6 +143,7 @@ export default function WorkflowPanel({
             identity will not change automatically.
           </p>
         )}
+        {singleApproval && <p>Sending also records your approval.</p>}
         {draft?.waiting_reason && <p>{draft.waiting_reason}</p>}
         {latest?.status === 'invalidated' && !draft && (
           <p>
@@ -218,20 +224,36 @@ export default function WorkflowPanel({
               )}
               <div className="approval-summary">
                 <strong>
-                  Approval progress -{' '}
-                  {
-                    shown.approvals.filter(
-                      (a) =>
-                        ['approve', 'edit_approve'].includes(a.decision) && !a.historical,
-                    ).length
-                  }{' '}
-                  / {shown.required_approvals}
+                  {singleApproval
+                    ? 'Approval recorded when sent'
+                    : 'Approval progress - '}{' '}
+                  {!singleApproval && (
+                    <>
+                      {
+                        shown.approvals.filter(
+                          (a) =>
+                            ['approve', 'edit_approve'].includes(a.decision) &&
+                            !a.historical,
+                        ).length
+                      }{' '}
+                      / {shown.required_approvals}
+                    </>
+                  )}
                 </strong>
                 <ul>
                   {shown.approvals.map((a) => (
                     <li key={a.id}>
-                      {a.approval_step === 1 ? 'Finance' : 'Owner'}: {a.approver_name} -{' '}
-                      {a.decision}
+                      {a.historical
+                        ? 'Historical approval'
+                        : singleApproval
+                          ? 'Sender approval'
+                          : a.approval_step === 1
+                            ? 'Finance'
+                            : 'Owner'}
+                      : {a.approver_name} - {a.decision} -{' '}
+                      {new Date(a.decided_at).toLocaleString('en-GB', {
+                        timeZone: 'Asia/Kuala_Lumpur',
+                      })}
                     </li>
                   ))}
                 </ul>
@@ -283,7 +305,11 @@ export default function WorkflowPanel({
                 )}
               </div>
               {editing && (
-                <p>Editing creates a new version and resets approval to Finance.</p>
+                <p>
+                  {singleApproval
+                    ? 'Editing creates a new version. Sending the saved version records your approval.'
+                    : 'Editing creates a new version and resets approval to Finance.'}
+                </p>
               )}
               {editing && dirty && allowed.includes('edit-approve') && (
                 <button
@@ -430,7 +456,15 @@ export default function WorkflowPanel({
             <ul>
               {v.approvals.map((a) => (
                 <li key={a.id}>
-                  Step {a.approval_step}: {a.approver_name} - {a.decision}
+                  {a.historical
+                    ? 'Historical approval'
+                    : v.required_approvals === 1
+                      ? 'Sender approval'
+                      : `Step ${a.approval_step}`}
+                  : {a.approver_name} - {a.decision} -{' '}
+                  {new Date(a.decided_at).toLocaleString('en-GB', {
+                    timeZone: 'Asia/Kuala_Lumpur',
+                  })}
                 </li>
               ))}
             </ul>

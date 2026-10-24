@@ -63,7 +63,9 @@ export default function WorkflowPage({
       <div className="section-title">
         <div>
           <h2>Follow-ups</h2>
-          <p>Prepare / Finance approval / Owner if required / Send</p>
+          <p>
+            Prepare / Send (one approval) / Finance then Owner approval (two approvals)
+          </p>
         </div>
         <span className="prototype-pill">Telegram live / WhatsApp & Email simulated</span>
       </div>
