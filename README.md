@@ -111,7 +111,7 @@ See [OLLAMA_INTEGRATION.md](OLLAMA_INTEGRATION.md) for AI setup details.
 +-------------------+            +------------------------------+
 
 +----------------------------------+
-| Runpod Serverless endpoint       |  called only by ai_service
+| Runpod Rented Pods               |  called only by ai_service
 | open model served with vLLM      |  (OpenAI-compatible API)
 +----------------------------------+
 ```
@@ -131,7 +131,7 @@ See [OLLAMA_INTEGRATION.md](OLLAMA_INTEGRATION.md) for AI setup details.
 | ORM and schema | SQLAlchemy 2.0, Alembic migrations plus a separate seed script |
 | Frontend | React, Vite, Tailwind CSS, shadcn/ui, Recharts |
 | Scheduler | APScheduler inside the FastAPI process, plus a Refresh now button |
-| AI model | served with vLLM on a Runpod Serverless endpoint |
+| AI model | served with vLLM on a Runpod |
 | AI client | `openai` Python library pointed at the Runpod URL |
 | Orbyte simulation | Python `Protocol` interface, `MockOrbyteAdapter` reading JSON seed files |
 | Access | Private email/password login, revocable server sessions, existing Owner/Finance identities |
