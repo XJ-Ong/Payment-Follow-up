@@ -23,7 +23,7 @@ from .services import workflow
 from .followup_schemas import WorkspaceView, RuleView, SettingsSaveView
 from .settings_schemas import ProfileInput, ProfileView, RulesInput
 from .services import settings
-from .services import invoices as invoice_ops, csv_import
+from .services import invoices as invoice_ops, csv_import, milestones
 from .services.invoices import InvoiceInput, PaymentInput
 from .csv_schemas import CsvInput, CsvPreview, CsvImportResult
 from .services.followups import ConfigurationError, lock_rule, refresh_workspace, read_workspace
@@ -295,3 +295,28 @@ def export_invoices_csv_endpoint(db: DB, role: Role):
         db.rollback()
         raise HTTPException(500,'Export failed; try again.')
     return Response(content,media_type='text/csv',headers={'Content-Disposition':f'attachment; filename="invoices-export-{date.today().isoformat()}.csv"'})
+
+@app.get('/api/milestones/unbilled')
+def list_unbilled_milestones(db: DB, role: Role):
+    """Completed milestones not yet invoiced, oldest completion first (S12)."""
+    try:
+        candidates = milestones.list_completed_unbilled(COMPANY, db, adapter)
+    except SQLAlchemyError:
+        db.rollback()
+        raise HTTPException(500,'Failed to fetch milestones; try again.')
+    except Exception as e:
+        raise HTTPException(500, f"Failed to fetch milestones: {e}") from e
+    return {"milestones": candidates, "count": len(candidates)}
+
+@app.get('/api/milestones/{milestone_id}/suggest-invoice')
+def suggest_invoice_for_milestone(milestone_id: UUID, db: DB, role: Role):
+    """Pre-filled invoice data for a completed milestone (S12)."""
+    try:
+        suggestion = milestones.suggest_invoice(milestone_id, db, adapter)
+    except ValueError as e:
+        raise HTTPException(409, str(e)) from e
+    except LookupError:
+        raise HTTPException(404, "Milestone not found") from None
+    except Exception as e:
+        raise HTTPException(500, f"Failed to generate suggestion: {e}") from e
+    return suggestion

@@ -293,7 +293,7 @@ Module Progress
 🟡 Weekly summary
 ✅ English/Bahasa Malaysia template reminders
 ✅ Fixed-template CSV invoice import; export remains pending
-❌ Milestone invoice suggestions
+✅ Milestone invoice suggestions
 ✅ Backup Finance approval during leave
 ✅ Two-person high-value approval
 ✅ Holiday-aware overdue calculation

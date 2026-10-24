@@ -133,6 +133,139 @@ if (response.ok) {
 
 ---
 
+## Milestone Billing Suggestions
+
+Auto-suggest an invoice from a completed project milestone (S12). Milestone,
+project and client data come from Orbyte; "already billed" is answered from
+our invoice table (`invoice.milestone_id` is the single source of truth).
+
+### List unbilled milestones
+
+```
+GET /api/milestones/unbilled
+```
+
+**Permissions:** Owner or Finance.
+
+**Response** (`200`):
+
+```json
+{
+  "milestones": [
+    {
+      "milestone_id": "00000000-0000-4000-8000-000000000402",
+      "milestone_name": "Phase 2 Racking Installation & Handover",
+      "milestone_value": "15000.00",
+      "completed_date": "2026-10-23",
+      "project_id": "00000000-0000-4000-8000-000000000301",
+      "project_name": "Warehouse Racking & Structural Upgrade",
+      "client_id": "00000000-0000-4000-8000-000000000204",
+      "client_name": "BinaJaya Contractors Sdn Bhd",
+      "payment_terms_days": 30
+    }
+  ],
+  "count": 2
+}
+```
+
+**Behaviour:**
+
+- Returns only **completed** milestones (have `completed_date`)
+- Excludes milestones already linked to a non-void invoice
+- Skips cancelled projects
+- Sorted by completion date (oldest first) — most urgent to bill
+- Empty array if no unbilled milestones
+- In the demo seed, `MLS-01` is already invoiced (INV-2035), so the demo
+  shows **2** unbilled milestones: `MLS-02` and `MLS-03`
+
+**Use case:** a "Ready to Bill" list in the frontend → user selects one →
+suggest invoice.
+
+---
+
+### Suggest invoice for milestone
+
+```
+GET /api/milestones/{milestone_id}/suggest-invoice
+```
+
+**Permissions:** Owner or Finance.
+
+**Path parameters:**
+- `milestone_id` — UUID of the completed milestone
+
+**Response** (`200`):
+
+```json
+{
+  "invoice_no": "INV-20261024-000402",
+  "client_id": "00000000-0000-4000-8000-000000000204",
+  "project_id": "00000000-0000-4000-8000-000000000301",
+  "milestone_id": "00000000-0000-4000-8000-000000000402",
+  "issue_date": "2026-10-23",
+  "due_date": "2026-11-22",
+  "total_amount": "15000.00",
+  "source": "milestone",
+  "_context": {
+    "milestone_name": "Phase 2 Racking Installation & Handover",
+    "project_name": "Warehouse Racking & Structural Upgrade",
+    "client_name": "BinaJaya Contractors Sdn Bhd",
+    "payment_terms_days": 30
+  }
+}
+```
+
+**Calculations:**
+- `invoice_no` — auto-generated: `INV-YYYYMMDD-<6-char-id-suffix>`
+- `issue_date` — milestone's `completed_date`
+- `due_date` — `issue_date` + project's `payment_terms` (default 30 if unset)
+- `total_amount` — milestone's `amount`
+- `_context` — metadata for UI display only (not persisted to the invoice)
+
+**Errors:**
+- `404 Milestone not found` — unknown milestone id
+- `409 Cannot bill incomplete milestone` — milestone not completed yet
+- `409 Milestone already billed` — a non-void invoice already references it
+
+---
+
+### Creating the invoice (frontend flow)
+
+1. User clicks "Suggest Invoice" on a milestone
+2. `GET /api/milestones/{id}/suggest-invoice` → pre-filled invoice data
+3. Show in modal/form (user can edit `invoice_no`, `due_date`, `total_amount`)
+4. User clicks "Create Invoice"
+5. `POST /api/invoices` with the edited data — **include `project_id`,
+   `milestone_id` and `source: "milestone"`** so the invoice links back to
+   the milestone and it disappears from the unbilled list
+
+```js
+const suggestion = await fetch(`/api/milestones/${id}/suggest-invoice`, { headers }).then(r => r.json());
+
+await fetch('/api/invoices', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json', 'X-Role': 'Finance' },
+  body: JSON.stringify({
+    invoice_no: suggestion.invoice_no,       // maybe edited
+    client_id: suggestion.client_id,
+    issue_date: suggestion.issue_date,
+    due_date: suggestion.due_date,           // maybe edited
+    total_amount: suggestion.total_amount,   // maybe edited
+    project_id: suggestion.project_id,       // pass through
+    milestone_id: suggestion.milestone_id,   // pass through
+    source: suggestion.source                // "milestone"
+  })
+});
+```
+
+`POST /api/invoices` now accepts optional `project_id`, `milestone_id` and
+`source` fields. The database enforces one invoice per milestone (unique
+index), so a duplicate link returns `409`. The suggested `invoice_no` is
+**not** reserved — if it is taken by the time the user submits, `POST`
+returns `409` and the user must change the number.
+
+---
+
 ## Company Rules
 
 ### Get current rules
