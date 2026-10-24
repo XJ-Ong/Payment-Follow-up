@@ -1,7 +1,43 @@
-modules = ["python-3.12", "nodejs-20", "web"]
+modules = ["python-3.12", "web", "postgresql-16", "nodejs-22"]
 
 [nix]
 channel = "stable-25_05"
+packages = ["libxcrypt"]
 
 [agent]
 expertMode = true
+
+[userenv]
+
+[userenv.development]
+AI_MODE = "template"
+DEMO_MODE = "true"
+VITE_DATA_MODE = "api"
+
+[workflows]
+runButton = "Project"
+
+[[workflows.workflow]]
+name = "Project"
+mode = "parallel"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Payment Follow-up"
+
+[[workflows.workflow]]
+name = "Payment Follow-up"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "bash scripts/start-dev.sh"
+waitForPort = 5000
+
+[workflows.workflow.metadata]
+outputType = "webview"
+
+[[ports]]
+localPort = 5000
+externalPort = 80

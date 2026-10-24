@@ -9,6 +9,7 @@ playwright-report/
 __pycache__/
 *.pyc
 .venv/
+.pythonlibs/
 node_modules/
 src/backend/static/
 .DS_Store

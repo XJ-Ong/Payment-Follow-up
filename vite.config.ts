@@ -15,11 +15,22 @@ function securityHeaders(apiUrl: string) {
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
-  const headers = securityHeaders(env.VITE_API_URL ?? 'http://localhost:8000');
+  const headers = securityHeaders(env.VITE_API_URL || 'http://localhost:8000');
+  // Replit's development preview is embedded; keep production framing protection.
+  const { 'X-Frame-Options': _frame, ...developmentHeaders } = headers;
+  developmentHeaders['Content-Security-Policy'] = headers['Content-Security-Policy']
+    .replace("frame-ancestors 'none'; ", '');
   return {
     plugins: [tailwindcss()],
     esbuild: { jsx: 'automatic' },
-    server: { headers },
+    server: {
+      host: '0.0.0.0',
+      port: 5000,
+      strictPort: true,
+      allowedHosts: true,
+      headers: developmentHeaders,
+      proxy: { '/api': 'http://127.0.0.1:8000' },
+    },
     preview: { headers },
     build: { rollupOptions: { output: { manualChunks: { charts: ['recharts'] } } } },
   };

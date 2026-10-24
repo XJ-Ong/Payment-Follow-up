@@ -13,7 +13,7 @@ import type {
 } from './workflowTypes';
 
 export const demoMode = import.meta.env.VITE_DATA_MODE === 'demo';
-const baseUrl = (import.meta.env.VITE_API_URL ?? 'http://localhost:8000').replace(
+const baseUrl = (import.meta.env.VITE_API_URL ?? '').replace(
   /\/$/,
   '',
 );

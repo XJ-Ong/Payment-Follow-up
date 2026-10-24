@@ -1,0 +1,1 @@
+- [Imported dependency compatibility](dependency-compatibility.md) — preserve the declared PostgreSQL driver when resolving newer SQLAlchemy versions.

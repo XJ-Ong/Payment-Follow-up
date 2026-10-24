@@ -22,7 +22,8 @@ def validate_database_url(raw: str) -> str:
             "(postgresql://user:password@host:port/dbname); "
             f"got {raw[:20]!r}..."
         )
-    return raw
+    # Use the driver declared by this project; SQLAlchemy 2.1 defaults to psycopg 3.
+    return raw.replace("postgresql://", "postgresql+psycopg2://", 1)
 
 
 engine = create_engine(validate_database_url(os.environ["DATABASE_URL"]))
