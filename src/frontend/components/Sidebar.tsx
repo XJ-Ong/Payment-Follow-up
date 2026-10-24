@@ -1,8 +1,9 @@
 import type { DemoUser } from '../workflowTypes';
-import { demoMode } from '../api';
+import { demoMode, sessionAuth, type SessionUser } from '../api';
 import { useEffect, useRef, useState } from 'react';
 import {
   Building2,
+  LogOut,
   ChevronDown,
   ChevronRight,
   MoreHorizontal,
@@ -14,6 +15,8 @@ import { type Role, roles, isRole } from '../model';
 import { navigation, type Page } from '../navigation';
 
 export default function Sidebar({
+  sessionUser,
+  onLogout,
   users,
   userId,
   onUserChange,
@@ -28,6 +31,8 @@ export default function Sidebar({
   onRoleChange,
   onNotify,
 }: {
+  sessionUser?: SessionUser;
+  onLogout?: () => Promise<void>;
   users: DemoUser[];
   userId?: string;
   onUserChange: (id: string) => void;
@@ -111,7 +116,13 @@ export default function Sidebar({
       <div className="sidebar-content">
         <button
           className="organisation"
-          onClick={() => onNotify('You’re in the Acme Collective demo workspace.')}
+          onClick={() =>
+            onNotify(
+              sessionAuth
+                ? 'Acme Collective team workspace.'
+                : 'Acme Collective demo workspace.',
+            )
+          }
           title="Acme Collective"
         >
           <span className="org-icon">
@@ -121,7 +132,7 @@ export default function Sidebar({
             <>
               <span>
                 <strong>Acme Collective</strong>
-                <small>Demo</small>
+                <small>{sessionAuth ? 'Team workspace' : 'Demo'}</small>
               </span>
               <ChevronDown size={15} />
             </>
@@ -184,7 +195,7 @@ export default function Sidebar({
         )}
       </div>
       <div className="sidebar-bottom">
-        {!collapsed && (demoMode || role === 'Other Staff') && (
+        {!sessionAuth && !collapsed && (demoMode || role === 'Other Staff') && (
           <label className="role-switch">
             <span>
               <ShieldCheck size={14} />
@@ -202,42 +213,55 @@ export default function Sidebar({
             </select>
           </label>
         )}
-        {!collapsed && demoMode && role === 'Finance' && users.length > 0 && (
-          <label className="role-switch">
-            DEMO USER
-            <select
-              aria-label="DEMO USER"
-              value={
-                userId ??
-                users.find((u) => u.role === 'finance' && u.is_default)?.id ??
-                ''
-              }
-              onChange={(e) => onUserChange(e.target.value)}
-            >
-              {users
-                .filter((u) => u.role === 'finance')
-                .map((u) => (
-                  <option key={u.id} value={u.id}>
-                    {u.name}
-                  </option>
-                ))}
-            </select>
-          </label>
-        )}
+        {!sessionAuth &&
+          !collapsed &&
+          demoMode &&
+          role === 'Finance' &&
+          users.length > 0 && (
+            <label className="role-switch">
+              DEMO USER
+              <select
+                aria-label="DEMO USER"
+                value={
+                  userId ??
+                  users.find((u) => u.role === 'finance' && u.is_default)?.id ??
+                  ''
+                }
+                onChange={(e) => onUserChange(e.target.value)}
+              >
+                {users
+                  .filter((u) => u.role === 'finance')
+                  .map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {u.name}
+                    </option>
+                  ))}
+              </select>
+            </label>
+          )}
         <div className="user">
-          <span className="avatar user-avatar">AM</span>
+          <span className="avatar user-avatar">
+            {sessionUser
+              ? sessionUser.name
+                  .split(' ')
+                  .map((part) => part[0])
+                  .slice(0, 2)
+                  .join('')
+              : 'AM'}
+          </span>
           {!collapsed && (
             <>
               <span>
                 <strong>
-                  {role === 'Other Staff' && !demoMode
-                    ? 'Other Staff'
-                    : (users.find((u) =>
-                        userId
-                          ? u.id === userId
-                          : u.is_default &&
-                            u.role === (role === 'Owner' ? 'owner' : 'finance'),
-                      )?.name ?? 'Alex Morgan')}
+                  {sessionUser?.name ??
+                    (role === 'Other Staff' && !demoMode
+                      ? 'Other Staff'
+                      : (users.find((u) =>
+                          userId
+                            ? u.id === userId
+                            : u.is_default &&
+                              u.role === (role === 'Owner' ? 'owner' : 'finance'),
+                        )?.name ?? 'Alex Morgan'))}
                 </strong>
                 <small>{role}</small>
               </span>
@@ -245,6 +269,17 @@ export default function Sidebar({
             </>
           )}
         </div>
+        {sessionAuth && onLogout && (
+          <button
+            className="logout-button"
+            onClick={() => void onLogout()}
+            aria-label="Sign out"
+            title="Sign out"
+          >
+            <LogOut size={17} aria-hidden="true" />
+            {!collapsed && 'Sign out'}
+          </button>
+        )}
       </div>
     </aside>
   );

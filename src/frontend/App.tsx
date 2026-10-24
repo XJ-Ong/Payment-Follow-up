@@ -6,6 +6,8 @@ import { useEffect, useState, useRef } from 'react';
 import { toast } from 'sonner';
 import {
   demoMode,
+  sessionAuth,
+  type SessionUser,
   loadWorkspace,
   createInvoice,
   recordPayment,
@@ -63,10 +65,16 @@ import InvoicesPage from './pages/InvoicesPage';
 import SettingsPage from './pages/SettingsPage';
 import WeeklySummaryPage from './pages/WeeklySummaryPage';
 
-export default function App() {
+export default function App({
+  sessionUser,
+  onLogout,
+}: {
+  sessionUser?: SessionUser;
+  onLogout?: () => Promise<void>;
+}) {
   const [invoices, setInvoices] = useState<Invoice[]>(demoMode ? initialInvoices : []);
   const [customers, setCustomers] = useState<Customer[]>(demoMode ? demoCustomers : []);
-  const [userId, setUserId] = useState<string | undefined>();
+  const [userId, setUserId] = useState<string | undefined>(sessionUser?.id);
   const [users, setUsers] = useState<DemoUser[]>([]);
   const [outbox, setOutbox] = useState<OutboxRecord[]>([]);
   const [activity, setActivity] = useState<ActivityRecord[]>([]);
@@ -78,7 +86,7 @@ export default function App() {
   const identityGeneration = useRef(0);
   const [active, setActive] = useState<Page>('Dashboard');
   const [followupStage, setFollowupStage] = useState<FollowupStage>('Ready');
-  const [role, setRole] = useState<Role>('Owner');
+  const [role, setRole] = useState<Role>(sessionUser?.role ?? 'Owner');
   const [filters, setFilters] = useState<Filters>(cleanFilters);
   const [applied, setApplied] = useState<Filters>(cleanFilters);
   const [adding, setAdding] = useState(false);
@@ -661,10 +669,12 @@ export default function App() {
 
   return (
     <AppLayout
+      sessionUser={sessionUser}
+      onLogout={onLogout}
       attentionItems={attentionItems}
       notificationError={error}
       onSeedTestData={
-        import.meta.env.DEV && !demoMode && rules && asOf
+        import.meta.env.DEV && !sessionAuth && !demoMode && rules && asOf
           ? () => void seedTestInvoices()
           : undefined
       }

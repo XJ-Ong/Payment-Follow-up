@@ -1,15 +1,24 @@
 # Payment Follow-up API — CSV & Rules Reference
 
-All endpoints are simulated for the hackathon demo. Authentication is **not** real: roles are passed via headers.
+Business endpoints require private session authentication by default. See
+[Authentication and publishing](authentication.md) for account provisioning and deployment.
 
-## Common headers
+## Authentication
 
-| Header | Values | Notes |
-|---|---|---|
-| `X-Role` | `Owner`, `Finance`, `Other Staff` | Required on every business endpoint. `Other Staff` receives `403` everywhere; only Owner/Finance are permitted. |
-| `X-User-ID` | Orbyte user UUID (optional) | Defaults: `USR-01` (Owner), `USR-02` (Finance). For Finance with a specific user, pass e.g. `USR-05`. |
+- `POST /api/auth/login`: JSON email/password with an allowed `Origin`; sets the session cookie and returns the user plus `csrf_token`.
+- `GET /api/auth/me`: returns the current session identity and CSRF token.
+- `POST /api/auth/logout`: JSON `{}`, cookie, allowed `Origin`, and `X-CSRF-Token`; returns 204 and revokes the session.
+- Send cookies on every business request (`credentials: 'include'` in browser fetch).
+- All mutations require JSON, an allowed `Origin`, and `X-CSRF-Token` from the current session.
+- Roles and actor IDs come from the server. `X-Role` / `X-User-ID` headers are ignored in session mode.
+- `/api/ai-test` requires an Owner session. `/api/health` is public and returns minimal status.
 
-Errors: `403` invalid role, `409` conflict/stale revision, `422` validation.
+Errors: `401` missing/expired session or invalid credentials, `403` insufficient permission or invalid origin/CSRF token, `409` conflict/stale revision, `422` validation, `429` throttled sign-in.
+
+Header-based examples below describe **local demo mode only**, requiring backend
+`AUTH_MODE=demo` and `DEMO_MODE=true`, plus frontend `VITE_AUTH_MODE=demo`.
+In session mode, replace identity headers with the cookie and CSRF contract above.
+Demo authentication is rejected in production.
 
 ---
 

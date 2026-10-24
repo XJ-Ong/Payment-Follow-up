@@ -15,6 +15,8 @@ import os
 # and enable the X-Role simulation (the demo gate has its own dedicated test).
 os.environ["RATE_LIMIT_PER_MINUTE"] = "0"
 os.environ["DEMO_MODE"] = "true"
+os.environ["AUTH_MODE"] = "demo"
+os.environ["APP_ENV"] = "development"
 from app.main import app, get_db, COMPANY
 from app.db.session import engine as source_engine
 from app.db.models import FollowupRule, ClientFollowupProfile

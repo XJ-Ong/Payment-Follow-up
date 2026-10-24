@@ -1,3 +1,4 @@
+import { sessionAuth, type SessionUser } from '../api';
 import type { DemoUser } from '../workflowTypes';
 import { useState, type ReactNode } from 'react';
 import { CalendarDays, ShieldCheck } from 'lucide-react';
@@ -18,6 +19,8 @@ import PaymentSummary from './PaymentSummary';
 import PermissionDenied from './PermissionDenied';
 
 export default function AppLayout({
+  sessionUser,
+  onLogout,
   attentionItems,
   notificationError,
   users,
@@ -41,6 +44,8 @@ export default function AppLayout({
   onSeedTestData,
   seeding = false,
 }: {
+  sessionUser?: SessionUser;
+  onLogout?: () => Promise<void>;
   attentionItems: AttentionItem[];
   notificationError: boolean;
   users: DemoUser[];
@@ -71,6 +76,8 @@ export default function AppLayout({
     <div className={`app-layout ${collapsed ? 'is-collapsed' : ''}`}>
       {mobile && <div className="sidebar-scrim" onClick={() => setMobile(false)} />}
       <Sidebar
+        sessionUser={sessionUser}
+        onLogout={onLogout}
         users={users}
         userId={userId}
         onUserChange={onUserChange}
@@ -130,7 +137,7 @@ export default function AppLayout({
             <PermissionDenied />
           ) : (
             <>
-              {totals.ready !== undefined && (
+              {!sessionAuth && totals.ready !== undefined && (
                 <section className="demo-identity" aria-label="Demo identity">
                   <div>
                     <strong>Demo identity</strong>

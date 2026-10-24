@@ -1,3 +1,4 @@
+import { sessionAuth } from '../api';
 import RankingExplanation from './RankingExplanation';
 import WorkflowPanel from './WorkflowPanel';
 import type { DraftAction, DraftPayload, ActivityRecord } from '../workflowTypes';
@@ -354,7 +355,9 @@ export default function ReviewDrawer({
         )}
         <small>
           {databaseMode
-            ? 'Demo identities. Telegram sends real messages only after approval and an explicit send action.'
+            ? sessionAuth
+              ? 'Telegram sends real messages only after approval and an explicit send action.'
+              : 'Demo identities. Telegram sends real messages only after approval and an explicit send action.'
             : 'Demo policy only. No real messages or payments are processed.'}
         </small>
       </div>

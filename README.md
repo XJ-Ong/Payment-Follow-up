@@ -55,11 +55,28 @@ npm run dev
 
 Frontend runs at: http://localhost:5173
 
-### 4. Test AI Integration (Optional)
+### 4. Provision a private login
+
+Session login is enabled by default. Before signing in, migrate the database and create
+an account linked to an existing Owner or Finance staff identity:
+
+```bash
+cd src/backend
+uv run alembic upgrade head
+uv run python -m app.manage_accounts list-staff
+uv run python -m app.manage_accounts provision --staff USR-01 --email owner@your-company.com
+```
+
+The command prompts privately for a password. No default login exists. See
+[Authentication and publishing](docs/authentication.md) for local setup, password resets,
+demo compatibility, and Replit publishing commands.
+
+### 5. Test AI Integration (Optional)
 
 ```bash
 # Test Ollama/AI connection
-curl -X POST http://localhost:8000/api/ai-test
+# Owner session cookie, allowed Origin and X-CSRF-Token are required.
+# See docs/authentication.md for authenticated requests.
 ```
 
 See [OLLAMA_INTEGRATION.md](OLLAMA_INTEGRATION.md) for AI setup details.
@@ -72,7 +89,7 @@ See [OLLAMA_INTEGRATION.md](OLLAMA_INTEGRATION.md) for AI setup details.
 |  Browser: React (Vite) single-page app                        |
 +------------------------------+--------------------------------+
                                | HTTPS, JSON (/api/...)
-                               | X-Role header (simulated login)
+                               | HttpOnly session cookie (authenticated staff)
 +------------------------------v--------------------------------+
 |  FastAPI application (one deployable service)                 |
 |                                                               |
@@ -117,7 +134,7 @@ See [OLLAMA_INTEGRATION.md](OLLAMA_INTEGRATION.md) for AI setup details.
 | AI model | served with vLLM on a Runpod Serverless endpoint |
 | AI client | `openai` Python library pointed at the Runpod URL |
 | Orbyte simulation | Python `Protocol` interface, `MockOrbyteAdapter` reading JSON seed files |
-| Roles | Simulated: role switcher sends `X-Role`, checked by a FastAPI dependency |
+| Access | Private email/password login, revocable server sessions, existing Owner/Finance identities |
 | Testing | pytest |
 | Local development | Docker Compose for a per-developer Postgres |
 | Hosting | Replit (Reserved VM), with its own Replit PostgreSQL |
@@ -142,8 +159,12 @@ OPENAI_API_KEY=ollama
 OPENAI_BASE_URL=https://your-ollama-endpoint/v1
 AI_MODEL=qwen2.5-coder:1.5b
 
-# Demo mode (enables X-Role header simulation)
-DEMO_MODE=true
+# Private team login
+AUTH_MODE=session
+DEMO_MODE=false
+APP_ENV=development
+APP_ORIGIN=http://localhost:5173
+VITE_AUTH_MODE=session
 
 # Frontend
 VITE_API_URL=http://localhost:8000
@@ -238,23 +259,23 @@ uv run pytest tests -q
 **AI:**
 - `POST /api/ai-test` - Test AI connection
 
-**Auth:** All business routes require `X-Role: Owner` or `Finance` (demo mode only)
+**Auth:** Business routes require a private team session. POST requests require an allowed Origin and `X-CSRF-Token`. The AI diagnostic is Owner-only. `X-Role` headers work only in explicitly enabled local demo mode.
 
 ---
 
 ## Security
 
-**Demo Mode:**
-- `DEMO_MODE=true` enables `X-Role` header simulation
-- **NOT** real authentication - logs warning on startup
-- Disable on any public deployment
+**Private team authentication:**
+- Argon2 password hashes and database-backed, revocable eight-hour sessions
+- HttpOnly cookies; Secure cookies and HSTS in production
+- Server-resolved Owner/Finance roles; browser identity headers are ignored
+- Origin and CSRF validation for mutations; persistent sign-in throttling
+- Session expiry, logout, password reset, and account disabling revoke access
 
-**Production Requirements:**
-- Real JWT/session authentication
-- Multi-tenant company scoping
-- Secrets manager for AI keys
-- HTTPS with HSTS (`ENABLE_HSTS=true`)
-- Proper CORS configuration
+**Local demo compatibility:**
+- Requires `AUTH_MODE=demo`, `DEMO_MODE=true`, and `VITE_AUTH_MODE=demo`
+- Production startup rejects demo authentication
+- Company scoping remains the existing single-company workspace
 
 **Built-in Protections:**
 - Rate limiting (1200 req/min default)

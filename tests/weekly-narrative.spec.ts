@@ -1,7 +1,7 @@
 import { expect, test, type Page, type Route } from '@playwright/test';
 import { summary, workspace } from './fixtures/weekly';
 
-test.use({ baseURL: 'http://127.0.0.1:5190' });
+test.use({ baseURL: 'http://127.0.0.1:5280' });
 
 async function setup(page: Page, generate: (route: Route) => Promise<void>) {
   await page.route('**/api/**', async (route) => {

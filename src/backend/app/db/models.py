@@ -363,3 +363,6 @@ class WeeklySummary(Base):
     prompt_version: Mapped[str | None] = mapped_column(String(50))
     generated_by: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True))  # Orbyte ref
     generated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
+
+# Register login tables in the shared migration metadata.
+from .auth_models import LoginAccount, LoginSession, LoginThrottle  # noqa: E402,F401

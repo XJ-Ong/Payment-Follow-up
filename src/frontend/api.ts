@@ -12,11 +12,18 @@ import type {
   ActivityRecord,
 } from './workflowTypes';
 
+export const sessionAuth = import.meta.env.VITE_AUTH_MODE !== 'demo';
+export type SessionUser = { id: string; name: string; role: 'Owner' | 'Finance' };
+export type AuthSession = { user: SessionUser; csrf_token: string };
+let csrfToken: string | undefined;
+let authGeneration = 0;
+export function setSessionToken(token?: string) {
+  csrfToken = token;
+  authGeneration += 1;
+}
+
 export const demoMode = import.meta.env.VITE_DATA_MODE === 'demo';
-const baseUrl = (import.meta.env.VITE_API_URL ?? 'http://localhost:8000').replace(
-  /\/$/,
-  '',
-);
+const baseUrl = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '');
 export class ApiError extends Error {
   constructor(
     message: string,
@@ -35,12 +42,18 @@ export async function request<T>(
   responseType: 'json' | 'text' = 'json',
 ): Promise<T> {
   let response: Response;
+  const generation = authGeneration;
   try {
     response = await fetch(`${baseUrl}/api${path}`, {
       method: body === undefined ? 'GET' : 'POST',
+      credentials: 'include',
       headers: {
-        'X-Role': role,
-        ...(userId ? { 'X-User-ID': userId } : {}),
+        ...(!sessionAuth
+          ? { 'X-Role': role, ...(userId ? { 'X-User-ID': userId } : {}) }
+          : {}),
+        ...(sessionAuth && csrfToken && body !== undefined
+          ? { 'X-CSRF-Token': csrfToken }
+          : {}),
         ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
       },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
@@ -52,6 +65,14 @@ export async function request<T>(
     );
   }
   if (!response.ok) {
+    if (
+      response.status === 401 &&
+      sessionAuth &&
+      generation === authGeneration &&
+      !path.startsWith('/auth/')
+    ) {
+      window.dispatchEvent(new Event('session-expired'));
+    }
     const payload = await response.json().catch(() => null);
     throw new ApiError(
       typeof payload?.detail === 'string'
@@ -61,6 +82,7 @@ export async function request<T>(
       payload,
     );
   }
+  if (response.status === 204) return undefined as T;
   return responseType === 'text' ? (response.text() as Promise<T>) : response.json();
 }
 export type SavedRules = {
@@ -327,3 +349,12 @@ export const getGeneratedSummary = (id: string, role: Role, userId?: string) =>
     undefined,
     userId,
   );
+
+export const readSession = () => request<AuthSession>('/auth/me', 'Owner');
+export const login = (email: string, password: string) =>
+  request<AuthSession>('/auth/login', 'Owner', { email, password });
+export const logout = () => request<void>('/auth/logout', 'Owner', {});
+
+export type DemoAccount = { label: string; email: string; password: string | null };
+export const readDemoAccounts = () =>
+  request<{ accounts: DemoAccount[] }>('/auth/demo-accounts', 'Owner');

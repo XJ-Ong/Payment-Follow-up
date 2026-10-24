@@ -1,7 +1,7 @@
 import { nextStep } from '../followupStages';
 import { reminderStatus, activityLabel } from '../workflowTypes';
 import { useEffect, useState } from 'react';
-import { loadVersions } from '../api';
+import { loadVersions, sessionAuth } from '../api';
 import type { Invoice, Role } from '../model';
 import type { Draft, DraftAction, DraftPayload, ActivityRecord } from '../workflowTypes';
 
@@ -196,8 +196,17 @@ export default function WorkflowPanel({
         </p>
         {draft?.assigned_approver_name && !allowed.includes('approve') && (
           <p>
-            To review, select {draft.assigned_approver_name} using Demo identity. Your
-            identity will not change automatically.
+            {sessionAuth ? (
+              <>
+                Waiting for {draft.assigned_approver_name}. Only the assigned approver can
+                review this reminder.
+              </>
+            ) : (
+              <>
+                To review, select {draft.assigned_approver_name} using Demo identity. Your
+                identity will not change automatically.
+              </>
+            )}
           </p>
         )}
         {singleApproval && <p>Sending also records your approval.</p>}

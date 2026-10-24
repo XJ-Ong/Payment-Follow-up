@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 import type { Profile } from '../src/frontend/settingsTypes';
 import type { Draft } from '../src/frontend/workflowTypes';
 
-test.use({ baseURL: 'http://127.0.0.1:5190' });
+test.use({ baseURL: 'http://127.0.0.1:5280' });
 
 for (const scenario of [
   { source: 'ai', label: 'AI-generated', reason: null },

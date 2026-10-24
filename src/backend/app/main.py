@@ -1,4 +1,4 @@
-"""Database-backed demo API. X-Role simulation is gated behind DEMO_MODE; it is not authentication."""
+"""Database-backed API with private sessions and explicit local demo authentication."""
 import logging
 import os
 import re
@@ -14,7 +14,12 @@ from zoneinfo import ZoneInfo
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import Response, JSONResponse
+from fastapi.responses import Response, JSONResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.exceptions import RequestValidationError
+from fastapi.exception_handlers import request_validation_exception_handler
+from pathlib import Path
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func, select, text
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
@@ -42,12 +47,17 @@ from .services.followups import ConfigurationError, lock_rule, refresh_workspace
 from .followup_schemas import SummaryInput, SummaryView
 from .services import ai_service
 from . import scheduler
+from .services import auth
+from .db.auth_models import LoginSession
+from .db.auth_models import LoginAccount
+from .demo_accounts import DEMO_ACCOUNTS
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """FastAPI lifespan: startup and shutdown events."""
     # Startup
-    if demo_mode_enabled():
+    auth.validate_configuration()
+    if auth.mode() == "demo" and demo_mode_enabled():
         logger.warning(
             "DEMO_MODE is enabled: X-Role/X-User-Id header simulation is active. "
             "This is NOT real authentication; never enable it on a public deployment."
@@ -87,12 +97,16 @@ def rate_limit_per_minute() -> int:
         return 1200
 
 
-app = FastAPI(title="Payment Follow-up", lifespan=lifespan)
+app = FastAPI(title="Payment Follow-up", lifespan=lifespan,
+              docs_url=None if auth.production() else "/docs",
+              redoc_url=None if auth.production() else "/redoc",
+              openapi_url=None if auth.production() else "/openapi.json")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=parse_cors_origins(os.getenv("CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173")),
+    allow_origins=sorted(auth.allowed_origins()) if auth.production() else parse_cors_origins(os.getenv("CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173")),
+    allow_credentials=True,
     allow_methods=["GET", "POST"],
-    allow_headers=["Content-Type", "X-Role", "X-User-ID"],
+    allow_headers=["Content-Type", "X-Role", "X-User-ID", "X-CSRF-Token"],
 )
 
 _rate_lock = threading.Lock()
@@ -126,11 +140,13 @@ async def rate_limit(request: Request, call_next):
 async def security_headers(request: Request, call_next):
     response: Response = await call_next(request)
     response.headers.setdefault("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'; base-uri 'none'")
+    if request.url.path.startswith("/api/"):
+        response.headers.setdefault("Cache-Control", "no-store")
     response.headers.setdefault("X-Content-Type-Options", "nosniff")
     response.headers.setdefault("X-Frame-Options", "DENY")
     response.headers.setdefault("Referrer-Policy", "no-referrer")
     response.headers.setdefault("Permissions-Policy", "camera=(), geolocation=(), microphone=()")
-    if os.getenv("ENABLE_HSTS", "").lower() in ("1", "true", "yes"):
+    if auth.production() or os.getenv("ENABLE_HSTS", "").lower() in ("1", "true", "yes"):
         response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
     return response
 
@@ -141,8 +157,10 @@ def get_db():
     with SessionLocal() as session:
         yield session
 
-def get_role(x_role: Annotated[str | None, Header()] = None,
+def get_role(request: Request, db: Annotated[Session, Depends(get_db)], x_role: Annotated[str | None, Header()] = None,
              x_user_id: Annotated[str | None, Header()] = None):
+    if auth.mode() == "session":
+        return auth.authenticate(db, request, adapter, COMPANY)[0]
     if not demo_mode_enabled():
         raise HTTPException(403, "Demo mode disabled; real authentication required")
     codes = {"Owner": "owner", "Finance": "finance"}
@@ -159,6 +177,78 @@ def get_role(x_role: Annotated[str | None, Header()] = None,
 
 DB = Annotated[Session, Depends(get_db)]
 Role = Annotated[AppUser, Depends(get_role)]
+@app.exception_handler(RequestValidationError)
+async def validation_error(request: Request, error: RequestValidationError):
+    if request.url.path == '/api/auth/login':
+        # Validation errors must never echo passwords or the login body.
+        return JSONResponse(status_code=422, content={'detail': 'Enter a valid email and password (maximum 128 password characters).'})
+    return await request_validation_exception_handler(request, error)
+
+
+class LoginInput(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    email: str = Field(min_length=1, max_length=254)
+    password: str = Field(min_length=1, max_length=128, repr=False)
+
+
+@app.post('/api/auth/login')
+def sign_in(data: LoginInput, request: Request, response: Response, db: DB):
+    if auth.mode() != 'session':
+        raise HTTPException(404, 'Session login is not enabled')
+    auth.validate_origin(request)
+    token, staff, session = auth.login(db, data.email, data.password, adapter, COMPANY)
+    # Rotate any previous browser session on successful sign-in.
+    previous = request.cookies.get(auth.COOKIE)
+    if previous:
+        from sqlalchemy import delete
+        db.execute(delete(LoginSession).where(LoginSession.token_hash == auth.digest(previous)))
+        db.commit()
+    response.set_cookie(auth.COOKIE, token, max_age=auth.SESSION_SECONDS,
+                        httponly=True, secure=auth.production(), samesite='lax', path='/')
+    response.headers['Cache-Control'] = 'no-store'
+    return auth.view(staff, session)
+
+
+@app.get('/api/auth/me')
+def current_session(request: Request, response: Response, db: DB):
+    if auth.mode() != 'session':
+        raise HTTPException(404, 'Session login is not enabled')
+    staff, session = auth.authenticate(db, request, adapter, COMPANY)
+    response.headers['Cache-Control'] = 'no-store'
+    return auth.view(staff, session)
+
+
+@app.get('/api/auth/demo-accounts')
+def demo_accounts(db: DB):
+    if auth.production() or auth.mode() != 'session':
+        return {'accounts': []}
+    accounts = []
+    for row in DEMO_ACCOUNTS:
+        account = db.scalar(select(LoginAccount).where(
+            LoginAccount.company_id == COMPANY, LoginAccount.email == row['email'],
+            LoginAccount.staff_id == external_uuid(row['staff']), LoginAccount.enabled.is_(True)))
+        if account and auth.is_demo_account(account):
+            accounts.append({key: row[key] for key in ('label', 'email', 'password')})
+        elif row['staff'] == 'USR-01':
+            owner = db.scalar(select(LoginAccount).where(
+                LoginAccount.company_id == COMPANY,
+                LoginAccount.staff_id == external_uuid('USR-01'), LoginAccount.enabled.is_(True)))
+            if owner:
+                accounts.append({'label': 'Owner', 'email': owner.email, 'password': None})
+    return {'accounts': accounts}
+
+
+@app.post('/api/auth/logout', status_code=204)
+def sign_out(request: Request, db: DB):
+    _, session = auth.authenticate(db, request, adapter, COMPANY)
+    db.delete(session)
+    db.commit()
+    response = Response(status_code=204)
+    response.delete_cookie(auth.COOKIE, path='/', secure=auth.production(), httponly=True, samesite='lax')
+    response.headers['Cache-Control'] = 'no-store'
+    return response
+
+
 def paid(db, invoice):
     return invoice_ops.paid(db,COMPANY,invoice)
 
@@ -500,12 +590,14 @@ def _summary_view(db: DB, summary_id: UUID) -> SummaryView:
 
 
 @app.post("/api/ai-test")
-def ai_test():
+def ai_test(role: Role):
     """Test the AI/Ollama connection with a simple prompt.
 
     Returns the AI status and a test response. If AI is unavailable,
     it will return template mode status.
     """
+    if role.role != "owner":
+        raise HTTPException(403, "Owner access required")
     test_facts = {
         "invoice_no": "TEST-001",
         "due_date": "2024-10-01",
@@ -540,3 +632,22 @@ def ai_test():
 @app.get('/api/invoices/import/references', response_model=list[CsvClientReference])
 def invoice_csv_references(role: Role):
     return csv_import.references(COMPANY,adapter)
+
+
+# One-origin production serving. API routes are registered above the SPA fallback.
+FRONTEND_DIST = Path(__file__).resolve().parents[3] / 'dist'
+if (FRONTEND_DIST / 'assets').is_dir():
+    app.mount('/assets', StaticFiles(directory=FRONTEND_DIST / 'assets'), name='frontend-assets')
+
+
+@app.get('/{path:path}', include_in_schema=False)
+def frontend(path: str):
+    if path == 'api' or path.startswith('api/') or path == 'assets' or path.startswith('assets/'):
+        raise HTTPException(404, 'Not found')
+    index = FRONTEND_DIST / 'index.html'
+    if not index.is_file():
+        raise HTTPException(404, 'Build the frontend before serving the app')
+    return FileResponse(index, headers={
+        'Cache-Control': 'no-cache',
+        'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'",
+    })

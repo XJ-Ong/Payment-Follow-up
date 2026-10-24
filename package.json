@@ -11,7 +11,8 @@
     "test:e2e": "playwright test",
     "test:weekly": "playwright test --config playwright.weekly.config.ts",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "build:publish": "node scripts/build-publish.mjs"
   },
   "dependencies": {
     "lucide-react": "0.468.0",
