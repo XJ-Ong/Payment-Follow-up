@@ -1,0 +1,11 @@
+client_id,company_id,name,trade,contact_name,phone,email,tier,preferred_channel,language,tone,do_not_contact,notes
+CLI-01,COMP-01,Kedai Kopi Harmoni,F&B / Cafe,Encik Lim,+60123456701,lim@kopiharmoni.my,new,whatsapp,bm,friendly,False,§5 Client A - Small & old (Safety Rule trigger)
+CLI-02,COMP-01,Seri Maju Trading Sdn Bhd,Wholesale & Trading,Puan Chong,+60123456702,accounts@serimaju.com.my,regular,whatsapp,en,neutral,False,§5 Client B - Big & old (Top Rank #1 + 2nd Approval > RM20k)
+CLI-03,COMP-01,TechNova Solutions Sdn Bhd,IT Services,Mr Tan,+60123456703,tan@technova.my,new,whatsapp,en,friendly,False,"§5 Client C & §6.4 Example Draft (RM 8,000, 10d past due)"
+CLI-04,COMP-01,BinaJaya Contractors Sdn Bhd,Construction & Renovation,Ir. Zulkifli,+60123456704,finance@binajaya.my,key,email,bm,firm,False,Key tier with deposit & partial payment + completed milestone
+CLI-05,COMP-01,Metro Logistics Hub Sdn Bhd,Transport & Logistics,Mr Rajan,+60123456705,billing@metrologistics.my,regular,whatsapp,en,firm,False,Multiple overdue invoices for same customer (§5 edge case)
+CLI-06,COMP-01,Golden Spoon Catering,Hospitality & F&B Supply,Cik Nadia,+60123456706,nadia@goldenspoon.my,key,whatsapp,en,friendly,False,Grace days longer than days overdue edge case (10d < 14d grace)
+CLI-07,COMP-01,Warisan Packaging Enterprise,Manufacturing & Packaging,Haji Roslan,+60123456707,roslan@warisanpack.my,regular,email,bm,neutral,True,"Do-Not-Contact = TRUE edge case (shows on dashboard, no AI draft)"
+CLI-08,COMP-01,Apex Printworks Sdn Bhd,Printing & Signage,Ms Michelle,+60123456708,michelle@apexprint.my,new,whatsapp,en,friendly,False,"Due today, not-yet-due, and fully paid invoices"
+CLI-09,COMP-01,Selangor Fresh Mart,Retail & Mini Market,Encik Hafiz,+60123456709,hafiz@selangorfresh.my,regular,whatsapp,bm,friendly,False,Spacing rule edge case (reminded 2 days ago) + small overdue
+CLI-10,COMP-01,MegaKemuncak Engineering,Industrial Services,Dato' Kelvin,+60123456710,ap@megakemuncak.com.my,key,email,en,neutral,False,High-value Key account past 14d grace + Overpaid edge case

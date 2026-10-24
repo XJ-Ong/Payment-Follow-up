@@ -1,0 +1,6 @@
+payment_id,invoice_id,invoice_no,amount,type,received_offset_days,recorded_by
+PAY-01,INV-02,INV-2031,5000.0,deposit,-55,USR-02
+PAY-02,INV-04,INV-2035,10000.0,partial,-12,USR-02
+PAY-03,INV-10,INV-2025,400.0,deposit,-60,USR-02
+PAY-04,INV-18,INV-2010,4000.0,full,-22,USR-02
+PAY-05,INV-19,INV-2015,3200.0,full,-16,USR-02

@@ -1,0 +1,35 @@
+Table,Field,Type,Nullable,Example,Filled_By,Meaning_and_Validation
+invoice,id,VARCHAR(32) PK,No,INV-01,System,Internal unique invoice identifier
+invoice,company_id,VARCHAR(32) FK,No,COMP-01,System,Multi-tenant SME company ID (§11.2 Rule 6)
+invoice,invoice_no,VARCHAR(64),No,INV-2038,User / CSV,Business invoice number; must be unique per company_id
+invoice,client_id,VARCHAR(32) FK,No,CLI-02,User / CSV,Must match an existing Orbyte client.id
+invoice,project_id,VARCHAR(32) FK,Yes,PRJ-02,User / CSV,Optional link to Orbyte project.id
+invoice,milestone_id,VARCHAR(32) FK,Yes,MLS-01,System (S12),Populated when auto-suggested from a completed project milestone
+invoice,issue_date,DATE (YYYY-MM-DD),No,2026-08-12,User / CSV,Date invoice was issued
+invoice,due_date,DATE (YYYY-MM-DD),No,2026-09-11,User / CSV,Contractual payment due date; must be >= issue_date
+invoice,total_amount,"DECIMAL(12,2)",No,50000.00,User / CSV,Full billed amount in MYR; must be > 0.00
+invoice,status,ENUM,No,open,System,open | partially_paid | paid | void (Derived from payments unless void)
+invoice,source,ENUM,No,manual,System,manual | csv | milestone
+payment_record,id,VARCHAR(32) PK,No,PAY-01,System,Unique payment record ID
+payment_record,invoice_id,VARCHAR(32) FK,No,INV-02,User / CSV,Linked invoice.id
+payment_record,amount,"DECIMAL(12,2)",No,5000.00,User / CSV,Payment received in MYR; must be > 0.00
+payment_record,received_date,DATE (YYYY-MM-DD),No,2026-08-27,User / CSV,Date money was received
+payment_record,type,ENUM,No,deposit,User / CSV,deposit | partial | full
+payment_record,recorded_by,VARCHAR(32) FK,No,USR-02,System,"Orbyte user.id of Owner, Finance, or Preparer who logged the payment"
+client_followup_profile,client_id,VARCHAR(32) PK/FK,No,CLI-02,System,1-to-1 extension of Orbyte client record
+client_followup_profile,preferred_channel,ENUM,No,whatsapp,Owner / Finance,whatsapp | email
+client_followup_profile,language,ENUM,No,en,Owner / Finance,en (English) | bm (Bahasa Malaysia) (S16)
+client_followup_profile,relationship_tier,ENUM,No,regular,Owner / Finance,new (0d grace) | regular (7d grace) | key (14d grace)
+client_followup_profile,tone,ENUM,No,neutral,Owner / Finance,friendly | neutral | firm
+client_followup_profile,do_not_contact,BOOLEAN,No,false,Owner / Finance,"If true, appears on Dashboard but blocks AI draft & send"
+followup_rule,company_id,VARCHAR(32) PK,No,COMP-01,System,One configurable rule row per SME company
+followup_rule,grace_days,JSON / INT cols,No,"{""new"":0,""regular"":7,""key"":14}",Owner,Grace days subtracted from days_overdue per customer tier
+followup_rule,alert_threshold,"DECIMAL(14,2)",No,50000.00,Owner,Minimum Priority Score (RM-days) to trigger threshold alert
+followup_rule,safety_flag_days,INT,No,30,Owner,Days overdue that triggers safety alert regardless of invoice size
+followup_rule,min_days_between_reminders,INT,No,5,Owner,Minimum cooldown days before chasing the same invoice again
+followup_rule,second_approval_amount,"DECIMAL(12,2)",Yes,20000.00,Owner,Outstanding RM above which Owner 2nd approval is required (S14)
+followup_rule,skip_holidays,BOOLEAN,No,false,Owner,Subtract Malaysian public holidays when counting days overdue (S15)
+priority_snapshot,outstanding,"DECIMAL(12,2)",No,50000.00,Scoring Engine,Calculated: total_amount - sum(payment_record.amount)
+priority_snapshot,days_overdue,INT,No,40,Scoring Engine,"Calculated: max(0, TODAY - due_date) in Malaysia time"
+priority_snapshot,effective_days,INT,No,33,Scoring Engine,"Calculated: max(0, days_overdue - grace_days)"
+priority_snapshot,score,"DECIMAL(14,2)",No,1650000.00,Scoring Engine,Calculated: outstanding * effective_days (Unit: RM-days)

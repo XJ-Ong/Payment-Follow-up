@@ -1,0 +1,203 @@
+[
+  {
+    "test_id": "AI-TEST-01",
+    "invoice_no": "INV-2041",
+    "customer_name": "TechNova Solutions Sdn Bhd",
+    "contact_name": "Mr Tan",
+    "outstanding_amount_rm": "8,000.00",
+    "days_overdue": 10,
+    "effective_days_overdue": 10,
+    "priority_score": 80000,
+    "trigger_rule": "threshold",
+    "preferred_channel": "whatsapp",
+    "language": "en",
+    "tone": "friendly",
+    "mandatory_tokens_for_number_check": [
+      "INV-2041",
+      "8,000"
+    ],
+    "reference_draft": "Hi Mr Tan, a friendly reminder that invoice INV-2041 for RM 8,000.00 was due 10 days ago. Could you let us know when we can expect payment? Thank you!",
+    "reference_score_reason": "Ranked #6 because RM 8,000.00 is 10 days past due (0 grace days for New tier), giving a score of 80,000 RM-days."
+  },
+  {
+    "test_id": "AI-TEST-02",
+    "invoice_no": "INV-2019",
+    "customer_name": "Kedai Kopi Harmoni",
+    "contact_name": "Encik Lim",
+    "outstanding_amount_rm": "500.00",
+    "days_overdue": 40,
+    "effective_days_overdue": 40,
+    "priority_score": 20000,
+    "trigger_rule": "safety_rule",
+    "preferred_channel": "whatsapp",
+    "language": "bm",
+    "tone": "friendly",
+    "mandatory_tokens_for_number_check": [
+      "INV-2019",
+      "500"
+    ],
+    "reference_draft": "Salam Encik Lim, peringatan mesra bahawa invois INV-2019 berjumlah RM 500.00 telah melepasi tarikh akhir selama 40 hari. Mohon maklumkan tarikh jangkaan bayaran. Terima kasih!",
+    "reference_score_reason": "Flagged by the 30-day safety rule because RM 500.00 has been overdue for 40 days."
+  },
+  {
+    "test_id": "AI-TEST-03",
+    "invoice_no": "INV-2038",
+    "customer_name": "Seri Maju Trading Sdn Bhd",
+    "contact_name": "Puan Chong",
+    "outstanding_amount_rm": "50,000.00",
+    "days_overdue": 40,
+    "effective_days_overdue": 33,
+    "priority_score": 1650000,
+    "trigger_rule": "both (score + safety_rule)",
+    "preferred_channel": "whatsapp",
+    "language": "en",
+    "tone": "neutral",
+    "mandatory_tokens_for_number_check": [
+      "INV-2038",
+      "50,000"
+    ],
+    "reference_draft": "Hello Puan Chong, we are following up on invoice INV-2038 with an outstanding balance of RM 50,000.00, which is now 40 days past its due date. Please share the scheduled payment date at your earliest convenience.",
+    "reference_score_reason": "Ranked #1 because RM 50,000.00 is 40 days past due (33 effective days after 7 Regular grace days), reaching 1,650,000 RM-days."
+  },
+  {
+    "test_id": "AI-TEST-04",
+    "invoice_no": "INV-2035",
+    "customer_name": "BinaJaya Contractors Sdn Bhd",
+    "contact_name": "Ir. Zulkifli",
+    "outstanding_amount_rm": "20,000.00",
+    "days_overdue": 22,
+    "effective_days_overdue": 8,
+    "priority_score": 160000,
+    "trigger_rule": "threshold",
+    "preferred_channel": "email",
+    "language": "bm",
+    "tone": "firm",
+    "mandatory_tokens_for_number_check": [
+      "INV-2035",
+      "20,000"
+    ],
+    "reference_draft": "Tuan Ir. Zulkifli, merujuk kepada invois INV-2035, baki tertunggak sebanyak RM 20,000.00 kini telah melepasi tempoh bayaran selama 22 hari. Sila sahkan tarikh penyelesaian bayaran bagi mengelakkan sebarang kelewatan lanjut. Terima kasih atas kerjasama pihak Tuan.",
+    "reference_score_reason": "Ranked #4 because the remaining balance of RM 20,000.00 is 22 days past due (8 effective days after 14 Key grace days), scoring 160,000 RM-days."
+  },
+  {
+    "test_id": "AI-TEST-05",
+    "invoice_no": "INV-2044",
+    "customer_name": "Metro Logistics Hub Sdn Bhd",
+    "contact_name": "Mr Rajan",
+    "outstanding_amount_rm": "12,000.00",
+    "days_overdue": 15,
+    "effective_days_overdue": 8,
+    "priority_score": 96000,
+    "trigger_rule": "threshold",
+    "preferred_channel": "whatsapp",
+    "language": "en",
+    "tone": "firm",
+    "mandatory_tokens_for_number_check": [
+      "INV-2044",
+      "12,000"
+    ],
+    "reference_draft": "Dear Mr Rajan, please be reminded that invoice INV-2044 for RM 12,000.00 is now 15 days overdue. Kindly confirm when the payment transfer will be completed this week.",
+    "reference_score_reason": "Ranked #5 because RM 12,000.00 is 15 days past due (8 effective days after 7 Regular grace days), scoring 96,000 RM-days."
+  },
+  {
+    "test_id": "AI-TEST-06",
+    "invoice_no": "INV-2031",
+    "customer_name": "MegaKemuncak Engineering",
+    "contact_name": "Dato' Kelvin",
+    "outstanding_amount_rm": "35,000.00",
+    "days_overdue": 29,
+    "effective_days_overdue": 15,
+    "priority_score": 525000,
+    "trigger_rule": "threshold",
+    "preferred_channel": "email",
+    "language": "en",
+    "tone": "neutral",
+    "mandatory_tokens_for_number_check": [
+      "INV-2031",
+      "35,000"
+    ],
+    "reference_draft": "Dear Dato' Kelvin, we would like to follow up on the remaining balance of RM 35,000.00 for invoice INV-2031, which is currently 29 days past due. We appreciate an update on your payment schedule.",
+    "reference_score_reason": "Ranked #2 because the remaining balance of RM 35,000.00 is 29 days past due (15 effective days after 14 Key grace days), scoring 525,000 RM-days."
+  },
+  {
+    "test_id": "AI-TEST-07",
+    "invoice_no": "INV-2022",
+    "customer_name": "BinaJaya Contractors Sdn Bhd",
+    "contact_name": "Ir. Zulkifli",
+    "outstanding_amount_rm": "2,500.00",
+    "days_overdue": 35,
+    "effective_days_overdue": 21,
+    "priority_score": 52500,
+    "trigger_rule": "both (score + safety_rule)",
+    "preferred_channel": "email",
+    "language": "bm",
+    "tone": "neutral",
+    "mandatory_tokens_for_number_check": [
+      "INV-2022",
+      "2,500"
+    ],
+    "reference_draft": "Salam Ir. Zulkifli, kami ingin membuat susulan berkenaan invois INV-2022 berjumlah RM 2,500.00 yang telah tertunggak selama 35 hari. Mohon maklumkan status pembayaran terkini daripada pihak Tuan.",
+    "reference_score_reason": "Ranked #8 because RM 2,500.00 is 35 days past due (21 effective days), crossing both the 50,000 score threshold and the 30-day safety rule."
+  },
+  {
+    "test_id": "AI-TEST-08",
+    "invoice_no": "INV-2025",
+    "customer_name": "Kedai Kopi Harmoni",
+    "contact_name": "Encik Lim",
+    "outstanding_amount_rm": "800.00",
+    "days_overdue": 32,
+    "effective_days_overdue": 32,
+    "priority_score": 25600,
+    "trigger_rule": "safety_rule",
+    "preferred_channel": "whatsapp",
+    "language": "bm",
+    "tone": "friendly",
+    "mandatory_tokens_for_number_check": [
+      "INV-2025",
+      "800"
+    ],
+    "reference_draft": "Hai Encik Lim, sekadar peringatan mesra untuk baki invois INV-2025 sebanyak RM 800.00 yang telah melepasi tempoh selama 32 hari. Boleh kongsikan bila bayaran dapat dibuat? Terima kasih!",
+    "reference_score_reason": "Flagged by the 30-day safety rule because the remaining RM 800.00 balance has been overdue for 32 days."
+  },
+  {
+    "test_id": "AI-TEST-09",
+    "invoice_no": "INV-2038-BM",
+    "customer_name": "Seri Maju Trading Sdn Bhd",
+    "contact_name": "Puan Chong",
+    "outstanding_amount_rm": "50,000.00",
+    "days_overdue": 40,
+    "effective_days_overdue": 33,
+    "priority_score": 1650000,
+    "trigger_rule": "both (score + safety_rule)",
+    "preferred_channel": "whatsapp",
+    "language": "bm",
+    "tone": "firm",
+    "mandatory_tokens_for_number_check": [
+      "INV-2038",
+      "50,000"
+    ],
+    "reference_draft": "Selamat sejahtera Puan Chong, sila ambil maklum bahawa invois INV-2038 berjumlah RM 50,000.00 kini telah tertunggak selama 40 hari. Mohon pihak Puan mengesahkan tarikh bayaran dengan kadar segera. Terima kasih.",
+    "reference_score_reason": "Tests Bahasa Malaysia firm tone on high-value RM 50,000.00 invoice without crossing into legal threats."
+  },
+  {
+    "test_id": "AI-TEST-10",
+    "invoice_no": "WEEKLY-SUMMARY-01",
+    "customer_name": "All Overdue Accounts",
+    "contact_name": "Owner",
+    "outstanding_amount_rm": "165,500.00",
+    "days_overdue": 0,
+    "effective_days_overdue": 0,
+    "priority_score": 0,
+    "trigger_rule": "weekly_summary",
+    "preferred_channel": "dashboard",
+    "language": "en",
+    "tone": "neutral",
+    "mandatory_tokens_for_number_check": [
+      "165,500",
+      "19,600",
+      "5"
+    ],
+    "reference_draft": "This week, total overdue balances decreased by 8.5% to RM 165,500.00, with RM 19,600.00 collected across customer accounts. Out of 8 overdue reminders drafted, 5 were approved and sent, 2 were snoozed for next week, and 1 was skipped. Seri Maju Trading Sdn Bhd (RM 50,000.00) remains the highest-priority account requiring follow-up.",
+    "reference_score_reason": "AI-3 Weekly Summary narrative test"
+  }
+]
