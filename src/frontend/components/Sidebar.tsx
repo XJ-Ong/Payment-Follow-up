@@ -1,3 +1,5 @@
+import type { DemoUser } from '../workflowTypes';
+import { demoMode } from '../api';
 import { useEffect, useRef, useState } from 'react';
 import {
   Building2,
@@ -12,6 +14,9 @@ import { type Role, roles, isRole } from '../model';
 import { navigation, type Page } from '../navigation';
 
 export default function Sidebar({
+  users,
+  userId,
+  onUserChange,
   active,
   role,
   collapsed,
@@ -23,6 +28,9 @@ export default function Sidebar({
   onRoleChange,
   onNotify,
 }: {
+  users: DemoUser[];
+  userId?: string;
+  onUserChange: (id: string) => void;
   active: Page;
   role: Role;
   collapsed: boolean;
@@ -134,10 +142,18 @@ export default function Sidebar({
         {!collapsed && <div className="nav-caption">WORKSPACE</div>}
         <nav>
           {navigation
-            .filter((n) => n.label.toLowerCase().includes(menuSearch.toLowerCase()))
+            .filter(
+              (n) =>
+                (demoMode
+                  ? !['Follow-ups', 'Reminder Workflow'].includes(n.label)
+                  : !['Today’s Queue', 'Reminder Workflow', 'Simulated Outbox'].includes(
+                      n.label,
+                    )) && n.label.toLowerCase().includes(menuSearch.toLowerCase()),
+            )
             .map(({ label, icon: Icon, group }) => (
               <button
                 key={label}
+                aria-label={label}
                 title={label}
                 aria-current={active === label ? 'page' : undefined}
                 className={`nav-item ${active === label ? 'active' : ''} ${group ? 'nav-divider' : ''}`}
@@ -149,7 +165,7 @@ export default function Sidebar({
                 {!collapsed && (
                   <>
                     <span>{label}</span>
-                    {label === 'Today’s Queue' && (
+                    {(label === 'Today’s Queue' || label === 'Follow-ups') && (
                       <span className="nav-count">{reviewCount}</span>
                     )}
                     {label === 'Simulated Outbox' && (
@@ -168,7 +184,7 @@ export default function Sidebar({
         )}
       </div>
       <div className="sidebar-bottom">
-        {!collapsed && (
+        {!collapsed && (demoMode || role === 'Other Staff') && (
           <label className="role-switch">
             <span>
               <ShieldCheck size={14} />
@@ -186,12 +202,43 @@ export default function Sidebar({
             </select>
           </label>
         )}
+        {!collapsed && demoMode && role === 'Finance' && users.length > 0 && (
+          <label className="role-switch">
+            DEMO USER
+            <select
+              aria-label="DEMO USER"
+              value={
+                userId ??
+                users.find((u) => u.role === 'finance' && u.is_default)?.id ??
+                ''
+              }
+              onChange={(e) => onUserChange(e.target.value)}
+            >
+              {users
+                .filter((u) => u.role === 'finance')
+                .map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.name}
+                  </option>
+                ))}
+            </select>
+          </label>
+        )}
         <div className="user">
           <span className="avatar user-avatar">AM</span>
           {!collapsed && (
             <>
               <span>
-                <strong>Alex Morgan</strong>
+                <strong>
+                  {role === 'Other Staff' && !demoMode
+                    ? 'Other Staff'
+                    : (users.find((u) =>
+                        userId
+                          ? u.id === userId
+                          : u.is_default &&
+                            u.role === (role === 'Owner' ? 'owner' : 'finance'),
+                      )?.name ?? 'Alex Morgan')}
+                </strong>
                 <small>{role}</small>
               </span>
               <MoreHorizontal size={19} />

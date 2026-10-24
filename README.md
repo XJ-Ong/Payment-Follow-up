@@ -157,7 +157,7 @@ npm install
 npm run dev
 ```
 
-Set `VITE_API_URL=http://localhost:8000` and `VITE_DATA_MODE=api`. Restart Vite after changing environment variables. Backend `CORS_ORIGINS` is a comma-separated list of allowed local frontend origins. For a standalone template preview use `VITE_DATA_MODE=demo`; those template edits are not persisted. API mode saves invoices/payments and uses the current Malaysia date. Rules and reminder screens still contain prototype behavior; durable reminder workflow, dual approvals and dispatch remain future integration work.
+Set `VITE_API_URL=http://localhost:8000` and `VITE_DATA_MODE=api`. Restart Vite after changing environment variables. Backend `CORS_ORIGINS` is a comma-separated list of allowed local frontend origins. For a standalone template preview use `VITE_DATA_MODE=demo`; those template edits are not persisted. API mode saves invoices/payments and uses the current Malaysia date. Owner can edit saved company rules in API mode; Finance and Owner can edit customer follow-up preferences. Scoring, dashboard alerts and queue eligibility are calculated and saved by the backend; saved reminder versions, Finance/Owner approvals and simulated dispatch are now connected; AI and scheduled automation remain future work.
 
 ### Production security headers
 
@@ -234,7 +234,7 @@ npm install
 npm run dev
 ```
 
-Set `VITE_API_URL=http://localhost:8000` and `VITE_DATA_MODE=api`. Restart Vite after changing environment variables. Backend `CORS_ORIGINS` is a comma-separated list of allowed local frontend origins. For a standalone template preview use `VITE_DATA_MODE=demo`; those template edits are not persisted. API mode saves invoices/payments and uses the current Malaysia date. Rules and reminder screens still contain prototype behavior; durable reminder workflow, dual approvals and dispatch remain future integration work.
+Set `VITE_API_URL=http://localhost:8000` and `VITE_DATA_MODE=api`. Restart Vite after changing environment variables. Backend `CORS_ORIGINS` is a comma-separated list of allowed local frontend origins. For a standalone template preview use `VITE_DATA_MODE=demo`; those template edits are not persisted. API mode saves invoices/payments and uses the current Malaysia date. Owner can edit saved company rules in API mode; Finance and Owner can edit customer follow-up preferences. Scoring, dashboard alerts and queue eligibility are calculated and saved by the backend; saved reminder versions, Finance/Owner approvals and simulated dispatch are now connected; AI and scheduled automation remain future work.
 
 ### API contract
 
@@ -282,20 +282,20 @@ Module Progress
 ✅ Payment recording
 ✅ Outstanding balance calculation
 ✅ Simulated roles - Preparer removed
-🟡 Dashboard
-🟡 Priority scoring & daily queue
-🟡 Customer profiles
-🟡 Rules & settings
-🟡 Reminder drafts
-🟡 Approve, skip & snooze
-🟡 Activity log
-🟡 Simulated outbox
+✅ Dashboard
+✅ Priority scoring & daily queue
+✅ Customer profiles
+✅ Rules & settings
+✅ Reminder drafts
+✅ Approve, skip & snooze
+✅ Activity log
+✅ Simulated outbox
 🟡 Weekly summary
-🟡 English/Bahasa Malaysia reminders
-❌ CSV import/export
+✅ English/Bahasa Malaysia template reminders
+✅ Fixed-template CSV invoice import; export remains pending
 ❌ Milestone invoice suggestions
-❌ Backup approval during leave
-❌ Two-person high-value approval
-❌ Holiday-aware overdue calculation
+✅ Backup Finance approval during leave
+✅ Two-person high-value approval
+✅ Holiday-aware overdue calculation
 ❌ AI drafting, explanations & summaries
 ❌ Scheduled automation

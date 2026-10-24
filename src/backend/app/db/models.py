@@ -48,9 +48,11 @@ def _company_id() -> Mapped[UUID]:
 
 # 1
 class FollowupRule(Base):
+    revision: Mapped[int] = mapped_column(Integer, server_default=text("1"))
     __tablename__ = "followup_rule"
     __table_args__ = (
         UniqueConstraint("company_id", name="uq_followup_rule_company_id"),
+        CheckConstraint("revision > 0", name="ck_followup_rule_revision"),
         CheckConstraint("alert_threshold >= 0", name="ck_followup_rule_alert_threshold"),
         CheckConstraint("safety_flag_days > 0", name="ck_followup_rule_safety_flag_days"),
         CheckConstraint("min_spacing_days >= 0", name="ck_followup_rule_min_spacing_days"),
@@ -64,15 +66,19 @@ class FollowupRule(Base):
     safety_flag_days: Mapped[int] = mapped_column(Integer)
     min_spacing_days: Mapped[int] = mapped_column(Integer)
     second_approval_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2))
-    skip_holidays: Mapped[bool] = mapped_column(Boolean, server_default=text("true"))
+    skip_holidays: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
     primary_approver_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True))  # Orbyte ref
-    backup_approver_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True))  # Orbyte ref
+    backup_approver_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True))  # Finance backup
+    owner_approver_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True))
+    latest_workspace_event_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("activity_log.id", ondelete="RESTRICT"))
 
 
 # 2
 class ClientFollowupProfile(Base):
+    revision: Mapped[int] = mapped_column(Integer, server_default=text("1"))
     __tablename__ = "client_followup_profile"
     __table_args__ = (
+        CheckConstraint("revision > 0", name="ck_client_followup_profile_revision"),
         CheckConstraint("relationship_tier IN ('New', 'Regular', 'Key')", name="ck_cfp_relationship_tier"),
         CheckConstraint("preferred_channel IN ('Email', 'WhatsApp')", name="ck_cfp_preferred_channel"),
         CheckConstraint("language IN ('English', 'Bahasa Malaysia')", name="ck_cfp_language"),
@@ -118,6 +124,8 @@ class Invoice(Base):
     due_date: Mapped[date] = mapped_column(Date)
     total_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2))
     status: Mapped[str] = mapped_column(String(20), server_default="open")
+    followup_suppressed_until: Mapped[date | None] = mapped_column(Date)
+    followup_suppression_reason: Mapped[str | None] = mapped_column(Text)
     source: Mapped[str] = mapped_column(String(20))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
 
@@ -163,9 +171,12 @@ class PrioritySnapshot(Base):
     days_overdue: Mapped[int] = mapped_column(Integer)
     grace_days: Mapped[int] = mapped_column(Integer)
     effective_days: Mapped[int] = mapped_column(Integer)
-    score: Mapped[Decimal] = mapped_column(Numeric(14, 2))  # RM-days, larger than money
-    rank: Mapped[int] = mapped_column(Integer)
-    reason: Mapped[str] = mapped_column(String(255))
+    score: Mapped[Decimal] = mapped_column(Numeric(24, 2))  # RM-days, larger than money
+    rank: Mapped[int | None] = mapped_column(Integer)
+    eligible: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    exclusion_reasons: Mapped[list] = mapped_column(JSONB, server_default=text("'[]'::jsonb"))
+    calculation: Mapped[dict] = mapped_column(JSONB, server_default=text("'{}'::jsonb"))
+    reason: Mapped[str] = mapped_column(Text)
     rule_snapshot: Mapped[dict] = mapped_column(JSONB)  # copy of rule settings used
 
 
@@ -173,6 +184,7 @@ class PrioritySnapshot(Base):
 class Alert(Base):
     __tablename__ = "alert"
     __table_args__ = (
+        UniqueConstraint("snapshot_id", "recipient_id", "channel", name="uq_alert_snapshot_recipient_channel"),
         CheckConstraint("trigger_type IN ('threshold', 'safety_rule', 'both')", name="ck_alert_trigger_type"),
         CheckConstraint("channel IN ('dashboard', 'email', 'whatsapp')", name="ck_alert_channel"),
         CheckConstraint("status IN ('new', 'seen', 'actioned', 'dismissed')", name="ck_alert_status"),
@@ -194,13 +206,14 @@ class ReminderDraft(Base):
     __tablename__ = "reminder_draft"
     __table_args__ = (
         UniqueConstraint("invoice_id", "version", name="uq_reminder_draft_invoice_version"),
+        Index("uq_reminder_current_invoice", "invoice_id", unique=True, postgresql_where=text("is_current")),
         CheckConstraint("channel IN ('Email', 'WhatsApp')", name="ck_reminder_draft_channel"),
         CheckConstraint("language IN ('English', 'Bahasa Malaysia')", name="ck_reminder_draft_language"),
         CheckConstraint("tone IN ('Friendly', 'Neutral', 'Firm')", name="ck_reminder_draft_tone"),
         CheckConstraint("written_by IN ('template', 'ai', 'human')", name="ck_reminder_draft_written_by"),
         CheckConstraint(
             "status IN ('draft', 'pending_approval', 'pending_second_approval',"
-            " 'approved', 'sent', 'skipped', 'snoozed')",
+            " 'approved', 'sent', 'skipped', 'snoozed', 'superseded', 'invalidated')",
             name="ck_reminder_draft_status",
         ),
         CheckConstraint("ai_model IS NULL OR written_by = 'ai'", name="ck_reminder_draft_ai_model"),
@@ -211,6 +224,12 @@ class ReminderDraft(Base):
     company_id: Mapped[UUID] = _company_id()
     invoice_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("invoice.id", ondelete="RESTRICT"))
     snapshot_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("priority_snapshot.id", ondelete="RESTRICT"))
+    prepared_by: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True))
+    facts: Mapped[dict] = mapped_column(JSONB, server_default=text("'{}'::jsonb"))
+    approval_policy: Mapped[dict] = mapped_column(JSONB, server_default=text("'{}'::jsonb"))
+    is_current: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    is_legacy: Mapped[bool] = mapped_column(Boolean, server_default=text("true"))
+    supersedes_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("reminder_draft.id", ondelete="RESTRICT"))
     version: Mapped[int] = mapped_column(Integer)
     channel: Mapped[str] = mapped_column(String(20))
     language: Mapped[str] = mapped_column(String(30))
@@ -233,11 +252,15 @@ class Approval(Base):
         CheckConstraint("decision IN ('approve', 'edit_approve', 'skip', 'snooze')", name="ck_approval_decision"),
         CheckConstraint("decision <> 'snooze' OR snooze_until IS NOT NULL", name="ck_approval_snooze_until"),
         Index("ix_approval_draft_id", "draft_id"),
+        Index("uq_approval_distinct_actor", "draft_id", "approver_id", unique=True,
+              postgresql_where=text("NOT is_legacy AND decision IN ('approve', 'edit_approve')")),
     )
 
     id: Mapped[UUID] = _uuid_pk()
     company_id: Mapped[UUID] = _company_id()
     draft_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("reminder_draft.id", ondelete="RESTRICT"))
+    is_legacy: Mapped[bool] = mapped_column(Boolean, server_default=text("true"))
+    context: Mapped[dict] = mapped_column(JSONB, server_default=text("'{}'::jsonb"))
     approver_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True))  # Orbyte ref
     approval_step: Mapped[int] = mapped_column(Integer)
     decision: Mapped[str] = mapped_column(String(20))

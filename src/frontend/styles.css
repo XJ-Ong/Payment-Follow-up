@@ -2157,6 +2157,80 @@ dd {
     visibility: visible;
   }
 }
+/* Keep operational text readable at every viewport size. */
+th {
+  font-size: 12px;
+  font-weight: 600;
+  color: #596b85;
+  height: 44px;
+}
+td,
+.invoice-link,
+.customer-cell strong,
+.priority-value {
+  font-size: 14px;
+  line-height: 1.5;
+}
+td {
+  color: #596b85;
+}
+td small,
+.customer-cell small,
+.customer-cell .avatar,
+.date-cell,
+.overdue-high,
+.overdue-normal,
+.priority-level,
+.badge,
+.review-button,
+.sort-label,
+.count-pill,
+.table-footer,
+.table-footer-note,
+.pagination > span {
+  font-size: 12px;
+  line-height: 1.5;
+}
+td small,
+.customer-cell small,
+.date-cell,
+.priority-level,
+.sort-label {
+  color: #687b94;
+}
+.review-button {
+  min-height: 32px;
+  padding: 6px 10px;
+}
+.pagination button,
+.pagination > span {
+  width: 30px;
+  height: 30px;
+}
+.button,
+.nav-item,
+label,
+.date-range legend,
+.input-icon input,
+.filters select,
+.date-range input,
+.menu-search input,
+.role-switch select,
+.detail-section textarea {
+  font-size: 13px;
+}
+.section-title p,
+.page-header p,
+.context-banner p,
+.summary-top > span:first-child,
+.summary-card > p,
+.date-line,
+.dialog-header p,
+.text-caption,
+.muted {
+  font-size: 12px;
+  line-height: 1.5;
+}
 /* Shared feedback for controls across pages, dialogs, and drawers. */
 button,
 input,
@@ -2272,4 +2346,378 @@ input[type='checkbox'] {
     animation-duration: 0.01ms !important;
     transition: none !important;
   }
+}
+
+.workflow-panel .drawer-actions {
+  flex-wrap: wrap;
+  justify-content: flex-start;
+}
+.workflow-panel label {
+  display: grid;
+  gap: 6px;
+  margin: 12px 0;
+}
+.workflow-panel input {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  border: 1px solid #dce4ee;
+  border-radius: 6px;
+  padding: 9px;
+  font: inherit;
+}
+.workflow-panel pre {
+  overflow-wrap: anywhere;
+}
+.workflow-panel details {
+  margin-top: 14px;
+}
+
+/* Saved reminder journey */
+.followups-workspace {
+  padding: 0 20px 20px;
+  min-width: 0;
+}
+.followups-workspace > .section-title {
+  margin: 0 -20px;
+}
+.followup-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 24px 0;
+}
+.followup-tabs button {
+  border: 1px solid #dbe3ef;
+  background: #fff;
+  color: #475569;
+  border-radius: 9px;
+  padding: 10px 14px;
+  cursor: pointer;
+}
+.followup-tabs button[aria-selected='true'] {
+  color: #fff;
+  background: #284fcb;
+  border-color: #284fcb;
+}
+.followup-tabs button span {
+  margin-left: 8px;
+  font-weight: 700;
+}
+.followup-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 22px 0;
+  border-top: 1px solid #e6ebf2;
+}
+.followup-row > div {
+  min-width: 0;
+  flex: 1;
+}
+.followup-row p {
+  margin: 8px 0;
+}
+.followup-row pre,
+.workflow-panel pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: inherit;
+  line-height: 1.7;
+}
+.followup-empty {
+  padding: 36px 16px;
+  background: #f5f7fb;
+  border-radius: 12px;
+  color: #64748b;
+}
+.stage-label {
+  display: inline-block;
+  border-radius: 20px;
+  padding: 4px 10px;
+  color: #284fcb;
+  background: #eef2ff;
+  font-size: 12px;
+  font-weight: 600;
+}
+.journey-progress {
+  display: flex;
+  flex-wrap: wrap;
+  list-style: none;
+  gap: 12px;
+  padding: 0;
+  margin: 20px 0;
+}
+.journey-progress li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #64748b;
+  font-size: 12px;
+}
+.journey-progress li span {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #edf0f5;
+}
+.journey-progress li[aria-current='step'] {
+  color: #284fcb;
+  font-weight: 700;
+}
+.journey-progress li[aria-current='step'] span {
+  background: #284fcb;
+  color: white;
+}
+.journey-progress li.complete {
+  color: #15803d;
+}
+.journey-next {
+  padding: 16px;
+  border-radius: 12px;
+  background: #eef2ff;
+  border-left: 3px solid #284fcb;
+  margin: 16px 0;
+}
+.journey-next p {
+  margin: 8px 0 0;
+}
+.reminder-recipient,
+.approved-message,
+.approval-summary,
+.defer-form {
+  margin: 20px 0;
+  padding: 16px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+}
+.reminder-recipient dd {
+  margin: 4px 0 12px;
+  overflow-wrap: anywhere;
+}
+.reminder-recipient dt {
+  color: #64748b;
+  font-size: 12px;
+}
+.workflow-panel details,
+.invoice-secondary {
+  border-top: 1px solid #e2e8f0;
+  padding-top: 16px;
+  margin-top: 20px;
+}
+.workflow-panel summary,
+.invoice-secondary summary,
+.followup-row summary {
+  cursor: pointer;
+  font-weight: 600;
+  padding: 8px 0;
+}
+.demo-identity {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 18px;
+  padding: 16px 20px;
+  margin-bottom: 22px;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+}
+.demo-identity > div {
+  margin-right: auto;
+}
+.demo-identity p {
+  margin: 5px 0 0;
+  color: #64748b;
+}
+.demo-identity label {
+  display: grid;
+  gap: 5px;
+  font-size: 12px;
+}
+.demo-identity select {
+  max-width: 100%;
+  padding: 8px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  background: white;
+}
+.test-data-control {
+  display: grid;
+  gap: 6px;
+  max-width: 250px;
+}
+.test-data-control small {
+  color: #64748b;
+  font-size: 11px;
+  line-height: 1.5;
+}
+.dashboard-followup-links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+.dashboard-followup-links h2 {
+  width: 100%;
+}
+@media (max-width: 600px) {
+  .main-shell {
+    transition: none;
+  }
+  .followup-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .demo-identity label {
+    width: 100%;
+  }
+  .followups-workspace .section-title {
+    flex-wrap: wrap;
+  }
+}
+
+.config-form {
+  padding: 22px;
+  display: grid;
+  gap: 18px;
+}
+.config-form fieldset {
+  border: 0;
+  padding: 0;
+  min-width: 0;
+  display: grid;
+  gap: 16px;
+}
+.config-form label:not(.check-label) {
+  display: grid;
+  gap: 8px;
+}
+.config-form input:not([type='checkbox']),
+.config-form select {
+  width: 100%;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid #dce4ee;
+  border-radius: 6px;
+  background: #fff;
+}
+.config-form input[readonly] {
+  background: #f5f7fb;
+}
+.config-form .rule-note {
+  margin: 0;
+}
+.config-form .drawer-actions {
+  flex-wrap: wrap;
+}
+.config-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr));
+  gap: 16px;
+}
+.customer-profile > .button {
+  margin: 12px 0;
+}
+
+.modal-wide {
+  width: 1000px;
+  max-width: 100%;
+}
+.invoice-import-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px;
+  margin-bottom: 18px;
+}
+.invoice-import-toolbar p {
+  margin-top: 6px;
+  color: #64748b;
+}
+.csv-import {
+  min-width: 0;
+}
+.csv-import > .button {
+  align-self: flex-start;
+}
+.csv-import label {
+  display: grid;
+  gap: 8px;
+}
+.csv-import input[type='file'] {
+  max-width: 100%;
+  border: 1px solid #dce4ee;
+  border-radius: 6px;
+  padding: 12px;
+}
+.csv-steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  list-style: none;
+  padding: 0;
+  color: #284fcb;
+  font-weight: 600;
+}
+.csv-customer {
+  display: grid;
+  gap: 4px;
+  padding: 10px 0;
+}
+.csv-customer code {
+  overflow-wrap: anywhere;
+}
+.csv-table-scroll {
+  overflow: auto;
+  max-height: 380px;
+  margin: 16px 0;
+  border: 1px solid #e2e8f0;
+}
+.csv-table-scroll table {
+  min-width: 750px;
+}
+.csv-table-scroll td {
+  white-space: normal;
+  vertical-align: top;
+  overflow-wrap: anywhere;
+}
+.csv-table-scroll th {
+  position: sticky;
+  top: 0;
+  background: #f5f7fb;
+}
+.csv-table-scroll td:nth-child(2) {
+  max-width: 220px;
+}
+.csv-table-scroll td:last-child {
+  min-width: 240px;
+}
+.csv-import [role='alert'] {
+  color: #b42318;
+}
+@media (max-width: 600px) {
+  .invoice-import-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .csv-import .dialog-footer {
+    flex-wrap: wrap;
+  }
+}
+
+.invoice-entry-options {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #e9edf4;
+  color: #64748b;
 }

@@ -1,7 +1,7 @@
 """MockOrbyteAdapter — the MVP stand-in for Orbyte's APIs.
 
 Implements the OrbyteAdapter protocol over the inlined synthetic world in
-app/orbyte/fixture.py (1 company, 4 users, 10 clients, 6 projects,
+app/orbyte/fixture.py (1 company, 5 users, 10 clients, 6 projects,
 3 milestones, 1 leave record, 2 holidays). Same conventions as seed.py:
 
 - External codes ("CLI-02") become uuids via app.ids.external_uuid, so the
@@ -15,7 +15,8 @@ This class is the only place that knows the fixture layout. When a real
 Orbyte HTTP adapter replaces it, nothing outside this class changes.
 """
 
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 from decimal import Decimal
 from uuid import UUID
 
@@ -41,8 +42,8 @@ class MockOrbyteAdapter:
     activate it and exercise S13 backup-approver routing.
     """
 
-    def __init__(self, *, demo_leave_active: bool = False) -> None:
-        today = date.today()
+    def __init__(self, *, demo_leave_active: bool = False, demo_owner_leave_active: bool = False, reference_date: date | None = None) -> None:
+        today = reference_date or datetime.now(timezone.utc).astimezone(ZoneInfo("Asia/Kuala_Lumpur")).date()
         company_id = external_uuid(FIXTURE["company"]["id"])
         self._company = Company(id=company_id, name=FIXTURE["company"]["name"])
 
@@ -112,7 +113,8 @@ class MockOrbyteAdapter:
         # Inactive fixture data stays hidden unless explicitly activated.
         self._leaves: list[ApprovedLeave] = []
         for row in FIXTURE["approved_leave"]:
-            if not demo_leave_active and not row.get("active_in_demo_by_default", False):
+            active = row.get("active_in_demo_by_default", False) or (demo_leave_active and row["user_id"] == "USR-02") or (demo_owner_leave_active and row["user_id"] == "USR-01")
+            if not active:
                 continue
             self._leaves.append(
                 ApprovedLeave(

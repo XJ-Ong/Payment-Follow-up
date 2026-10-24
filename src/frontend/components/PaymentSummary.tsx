@@ -3,6 +3,39 @@ import { money, type InvoiceTotals } from '../model';
 import SummaryCard from './SummaryCard';
 
 export default function PaymentSummary({ totals }: { totals: InvoiceTotals }) {
+  if (totals.ready !== undefined)
+    return (
+      <section className="summary-grid" aria-label="Payment summary">
+        <SummaryCard
+          label="Total Overdue"
+          value={money(totals.overdue)}
+          caption="Excludes void invoices; includes do-not-contact balances"
+          icon={Wallet}
+          color="blue"
+        />
+        <SummaryCard
+          label="Ready for Follow-up"
+          value={String(totals.ready)}
+          caption="Eligible invoices in the daily queue"
+          icon={FileCheck2}
+          color="orange"
+        />
+        <SummaryCard
+          label="Active Alerts"
+          value={String(totals.alerts ?? 0)}
+          caption="Threshold or overdue safety rule reached"
+          icon={FileText}
+          color="violet"
+        />
+        <SummaryCard
+          label="Pending Approval"
+          value={String(totals.review)}
+          caption="Finance or Owner review required"
+          icon={FileCheck2}
+          color="orange"
+        />
+      </section>
+    );
   return (
     <section className="summary-grid" aria-label="Payment summary">
       <SummaryCard

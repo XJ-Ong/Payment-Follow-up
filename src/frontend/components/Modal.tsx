@@ -7,14 +7,18 @@ export default function Modal({
   children,
   onClose,
   drawer = false,
+  wide = false,
 }: {
   title: string;
   subtitle: string;
   children: ReactNode;
   onClose: () => void;
   drawer?: boolean;
+  wide?: boolean;
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  const close = useRef(onClose);
+  close.current = onClose;
   useEffect(() => {
     const previous =
       document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -23,12 +27,12 @@ export default function Modal({
     const items = () =>
       Array.from(
         ref.current?.querySelectorAll<HTMLElement>(
-          'button, input, select, textarea, [tabindex="0"]',
+          'button, input, select, textarea, summary, [tabindex="0"]',
         ) ?? [],
-      ).filter((x) => !x.hasAttribute('disabled'));
+      ).filter((x) => !x.hasAttribute('disabled') && x.getClientRects().length > 0);
     items()[0]?.focus();
     const key = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') close.current();
       if (e.key === 'Tab') {
         const all = items();
         const first = all[0];
@@ -48,7 +52,7 @@ export default function Modal({
       document.body.style.overflow = overflow;
       previous?.focus();
     };
-  }, [onClose]);
+  }, []);
   return (
     <div
       className={`overlay ${drawer ? 'drawer-overlay' : ''}`}
@@ -61,7 +65,7 @@ export default function Modal({
         role="dialog"
         aria-modal="true"
         aria-labelledby="dialog-title"
-        className={drawer ? 'drawer' : 'modal'}
+        className={drawer ? 'drawer' : wide ? 'modal modal-wide' : 'modal'}
       >
         <div className="dialog-header">
           <div>

@@ -38,7 +38,11 @@ export default function InvoiceTable({
                 Priority score{' '}
                 <span title="Outstanding × overdue days after grace period">ⓘ</span>
               </th>
-              <th>Approval status</th>
+              <th>
+                {invoices.some((i) => i.calculation)
+                  ? 'Follow-up eligibility'
+                  : 'Approval status'}
+              </th>
               <th>Action</th>
             </tr>
           </thead>
@@ -53,7 +57,9 @@ export default function InvoiceTable({
                     <button className="invoice-link" onClick={() => onReview(i.id)}>
                       {i.id}
                     </button>
-                    <small>Invoice</small>
+                    <small>
+                      {i.calculation?.rank ? `Rank ${i.calculation.rank}` : 'Invoice'}
+                    </small>
                   </td>
                   <td>
                     <div className="customer-cell">
@@ -80,17 +86,36 @@ export default function InvoiceTable({
                       {priorityScore.toLocaleString('en-MY')}
                     </span>
                     <span
-                      className={`priority-level ${priorityScore > 100000 ? 'high' : 'medium'}`}
+                      className={`priority-level ${(i.calculation ? i.calculation.trigger_type !== null : priorityScore > 100000) ? 'high' : 'medium'}`}
                     >
-                      {priorityScore > 100000
-                        ? 'High'
-                        : priorityScore > 0
-                          ? 'Normal'
-                          : 'Low'}
+                      {i.calculation
+                        ? i.calculation.trigger_type === 'both'
+                          ? 'Both rules'
+                          : i.calculation.trigger_type === 'threshold'
+                            ? 'Threshold'
+                            : i.calculation.trigger_type === 'safety_rule'
+                              ? 'Safety rule'
+                              : 'Below threshold'
+                        : priorityScore > 100000
+                          ? 'High'
+                          : priorityScore > 0
+                            ? 'Normal'
+                            : 'Low'}
                     </span>
                   </td>
                   <td>
-                    <StatusBadge status={i.status} />
+                    <StatusBadge
+                      status={
+                        i.calculation
+                          ? i.calculation.eligible
+                            ? 'Ready for follow-up'
+                            : 'Not eligible'
+                          : i.status
+                      }
+                    />
+                    {i.calculation && !i.calculation.eligible && (
+                      <small>{i.calculation.exclusion_reasons[0]}</small>
+                    )}
                   </td>
                   <td>
                     <button className="review-button" onClick={() => onReview(i.id)}>

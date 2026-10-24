@@ -127,7 +127,8 @@ def seed(reset: bool = False) -> None:
                 second_approval_amount=Decimal(str(RULES["second_approval_amount"])),
                 skip_holidays=RULES["skip_holidays"],
                 primary_approver_id=FINANCE_ID,
-                backup_approver_id=OWNER_ID,
+                backup_approver_id=external_uuid("USR-05"),
+                owner_approver_id=OWNER_ID,
             )
         )
 
@@ -202,7 +203,6 @@ def seed(reset: bool = False) -> None:
                 company_id=COMPANY_ID,
                 invoice_id=invoice_ids[row["invoice_no"]],
                 snapshot_id=None,  # no snapshot row for pre-existing history
-                prepared_by=FINANCE_ID,
                 version=1,
                 channel=CHANNEL[profile["preferred_channel"]],
                 language=LANGUAGE[profile["language"]],

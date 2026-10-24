@@ -13,3 +13,9 @@ node_modules/
 src/backend/static/
 .DS_Store
 mem/
+
+# Test output (screenshots written by Playwright)
+artifacts/
+
+# Editor config
+.vscode/

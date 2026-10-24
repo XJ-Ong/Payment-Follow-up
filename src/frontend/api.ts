@@ -1,48 +1,137 @@
-import type { Customer, Invoice, Role } from './model';
+import type { Profile, ProfileInput, RulesInput } from './settingsTypes';
+import type { CsvPreview, CsvResult } from './csvTypes';
+import type { Customer, Invoice, Role, FollowupCalculation } from './model';
+
+import type {
+  DemoUser,
+  Draft,
+  DraftAction,
+  DraftPayload,
+  Workflow,
+  OutboxRecord,
+  ActivityRecord,
+} from './workflowTypes';
 
 export const demoMode = import.meta.env.VITE_DATA_MODE === 'demo';
 const baseUrl = (import.meta.env.VITE_API_URL ?? 'http://localhost:8000').replace(
   /\/$/,
   '',
 );
-export async function request<T>(path: string, role: Role, body?: unknown): Promise<T> {
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    public status: number,
+    public data?: unknown,
+  ) {
+    super(message);
+  }
+}
+
+export async function request<T>(
+  path: string,
+  role: Role,
+  body?: unknown,
+  userId?: string,
+  responseType: 'json' | 'text' = 'json',
+): Promise<T> {
   const response = await fetch(`${baseUrl}/api${path}`, {
     method: body === undefined ? 'GET' : 'POST',
     headers: {
       'X-Role': role,
+      ...(userId ? { 'X-User-ID': userId } : {}),
       ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
     },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
   if (!response.ok) {
     const payload = await response.json().catch(() => null);
-    throw new Error(
+    throw new ApiError(
       typeof payload?.detail === 'string'
         ? payload.detail
         : `Request failed (${response.status}). Check the form and try again.`,
+      response.status,
+      payload,
     );
   }
-  return response.json();
+  return responseType === 'text' ? (response.text() as Promise<T>) : response.json();
 }
+export type SavedRules = {
+  revision: number;
+  grace_days_by_tier: Record<string, number>;
+  alert_threshold: string;
+  safety_flag_days: number;
+  min_spacing_days: number;
+  skip_holidays: boolean;
+  primary_approver_id: string;
+  backup_approver_id?: string | null;
+  owner_approver_id?: string | null;
+  second_approval_amount?: string | null;
+};
+export type FollowupAlert = {
+  id: string;
+  invoice_id: string;
+  recipient_id: string;
+  trigger_type: string;
+  status: string;
+  reason: string;
+};
+export type Dashboard = {
+  total_outstanding: string;
+  total_overdue: string;
+  queue_count: number;
+  alert_count: number;
+  customer_balances: { customer_id: string; name: string; balance: string }[];
+  ranking_ids: string[];
+};
 type ApiInvoice = {
   id: string;
   invoice_no: string;
   client_id: string;
-  issue_date: string;
   due_date: string;
   total_amount: string;
   payments: string;
-  outstanding_amount: string;
   status: string;
+  workflow?: Workflow;
+  calculation: FollowupCalculation;
 };
-export async function loadWorkspace(role: Role) {
-  const data = await request<{
-    invoices: ApiInvoice[];
-    customers: Customer[];
-    as_of_date: string;
-  }>('/invoices', role);
+export type WorkspacePayload = {
+  invoices: ApiInvoice[];
+  customers: Customer[];
+  as_of_date: string;
+  computed_at: string | null;
+  rules: SavedRules | null;
+  dashboard: Dashboard;
+  alerts: FollowupAlert[];
+};
+export async function loadWorkspace(
+  role: Role,
+  refresh = true,
+  userId?: string,
+  saved?: WorkspacePayload,
+) {
+  const data =
+    saved ??
+    (await request<WorkspacePayload>(
+      refresh ? '/followups/refresh' : '/followups',
+      role,
+      refresh ? {} : undefined,
+      userId,
+    ));
+  const [users, outbox, activity] = await Promise.all([
+    request<DemoUser[]>('/users', role, undefined, userId),
+    request<OutboxRecord[]>('/outbox', role, undefined, userId),
+    request<ActivityRecord[]>('/activity', role, undefined, userId),
+  ]);
   return {
+    users,
+    outbox,
+    activity,
     customers: data.customers,
+    dashboard: data.dashboard,
+    alerts: data.alerts,
+    rules: data.rules,
+    asOf: data.as_of_date,
+    computedAt: data.computed_at,
     invoices: data.invoices.map(
       (row): Invoice => ({
         id: row.invoice_no,
@@ -55,29 +144,118 @@ export async function loadWorkspace(role: Role) {
         status: 'Not started',
         asOf: data.as_of_date,
         financialStatus: row.status,
+        workflow: row.workflow,
+        calculation: row.calculation,
       }),
     ),
   };
 }
-export function createInvoice(invoice: Invoice, role: Role, issueDate: string) {
-  return request('/invoices', role, {
-    invoice_no: invoice.id,
-    client_id: invoice.customerId,
-    issue_date: issueDate,
-    due_date: invoice.due,
-    total_amount: invoice.total.toFixed(2),
-    initial_payment: invoice.payments.toFixed(2),
-  });
+export function createInvoice(
+  invoice: Invoice,
+  role: Role,
+  issueDate: string,
+  userId?: string,
+) {
+  return request(
+    '/invoices',
+    role,
+    {
+      invoice_no: invoice.id,
+      client_id: invoice.customerId,
+      issue_date: issueDate,
+      due_date: invoice.due,
+      total_amount: invoice.total.toFixed(2),
+      initial_payment: invoice.payments.toFixed(2),
+    },
+    userId,
+  );
 }
 export function recordPayment(
   invoice: Invoice,
   role: Role,
   amount: string,
   receivedDate: string,
+  userId?: string,
 ) {
-  return request(`/invoices/${invoice.databaseId}/payments`, role, {
-    amount,
-    received_date: receivedDate,
-    payment_type: 'partial',
-  });
+  return request(
+    `/invoices/${invoice.databaseId}/payments`,
+    role,
+    {
+      amount,
+      received_date: receivedDate,
+      payment_type: 'partial',
+    },
+    userId,
+  );
 }
+
+export function changeDraft(
+  invoice: Invoice,
+  action: DraftAction,
+  payload: DraftPayload,
+  role: Role,
+  userId?: string,
+) {
+  if (action === 'create')
+    return request<Draft>(`/invoices/${invoice.databaseId}/drafts`, role, {}, userId);
+  const draft = invoice.workflow?.current;
+  if (!draft) return Promise.reject(new Error('No current draft. Reload the invoice.'));
+  return request<Draft>(
+    `/drafts/${draft.id}/${action}`,
+    role,
+    { version: draft.version, ...payload },
+    userId,
+  );
+}
+export function loadVersions(invoiceId: string, role: Role, userId?: string) {
+  return request<Draft[]>(`/invoices/${invoiceId}/drafts`, role, undefined, userId);
+}
+
+export type SettingsResult = {
+  workspace: WorkspacePayload;
+  invalidated_journeys: number;
+};
+export const getProfile = (id: string, role: Role, userId?: string) =>
+  request<Profile>(`/customers/${id}/profile`, role, undefined, userId);
+export const saveProfile = (
+  id: string,
+  data: ProfileInput,
+  role: Role,
+  userId?: string,
+) => request<SettingsResult>(`/customers/${id}/profile`, role, data, userId);
+export const getRules = (role: Role, userId?: string) =>
+  request<SavedRules>('/settings/rules', role, undefined, userId);
+export const saveRules = (data: RulesInput, role: Role, userId?: string) =>
+  request<SettingsResult>('/settings/rules', role, data, userId);
+export function rulesInput(r: SavedRules): RulesInput {
+  return {
+    revision: r.revision,
+    grace_days_by_tier: {
+      New: r.grace_days_by_tier.New,
+      Regular: r.grace_days_by_tier.Regular,
+      Key: r.grace_days_by_tier.Key,
+    },
+    alert_threshold: r.alert_threshold,
+    safety_flag_days: r.safety_flag_days,
+    min_spacing_days: r.min_spacing_days,
+    skip_holidays: r.skip_holidays,
+    second_approval_amount: r.second_approval_amount ?? '20000.00',
+  };
+}
+export function profileInput(p: Profile): ProfileInput {
+  return {
+    revision: p.revision,
+    relationship_tier: p.relationship_tier,
+    preferred_channel: p.preferred_channel,
+    language: p.language,
+    tone: p.tone,
+    do_not_contact: p.do_not_contact,
+  };
+}
+
+export const previewCsv = (csv_text: string, role: Role, userId?: string) =>
+  request<CsvPreview>('/invoices/import/preview', role, { csv_text }, userId);
+export const importCsv = (csv_text: string, role: Role, userId?: string) =>
+  request<CsvResult>('/invoices/import', role, { csv_text }, userId);
+export const csvTemplate = (role: Role, userId?: string) =>
+  request<string>('/invoices/import/template', role, undefined, userId, 'text');

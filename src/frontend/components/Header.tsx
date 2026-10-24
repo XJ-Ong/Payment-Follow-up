@@ -2,11 +2,13 @@ import { Bell, ChevronRight, Menu } from 'lucide-react';
 import { type Page } from '../navigation';
 
 export default function Header({
+  followupMode = false,
   active,
   reviewCount,
   onOpenNavigation,
   onNotify,
 }: {
+  followupMode?: boolean;
   active: Page;
   reviewCount: number;
   onOpenNavigation: () => void;
@@ -35,7 +37,13 @@ export default function Header({
         <button
           className="icon-button notification"
           aria-label="Show review notifications"
-          onClick={() => onNotify(`${reviewCount} invoices are awaiting human review.`)}
+          onClick={() =>
+            onNotify(
+              followupMode
+                ? `${reviewCount} active follow-up alerts.`
+                : `${reviewCount} invoices are awaiting human review.`,
+            )
+          }
         >
           <Bell size={18} />
           <i />

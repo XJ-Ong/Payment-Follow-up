@@ -3,7 +3,7 @@ The synthetic Orbyte world
 
 This is data only: MockOrbyteAdapter loads it at construction.
 
-World: 1 company (Maju Jaya Enterprise), 4 users (Owner/Finance/Other/
+World: 1 company (Maju Jaya Enterprise), 5 users (Owner/Finance/Backup Finance/Other/
 Other), 10 clients, 6 projects, 3 milestones (MLS-02/03 are the S12
 auto-suggest candidates), 1 leave record and 2 public holidays.
 
@@ -22,6 +22,7 @@ FIXTURE = {
     # role is the fixture code our simulated X-Role handling maps to §3:
     # owner | finance | other_staff
     "users": [
+        {"id": "USR-05", "name": "Puan Nadia (Backup Finance)", "email": "nadia@majujaya.my", "department": "Finance", "reports_to": "USR-01", "role": "finance"},
         {
             "id": "USR-01",
             "name": "Puan Farah",
@@ -232,12 +233,13 @@ FIXTURE = {
     ],
 
     # S13 fixture: when active, routes approvals from Finance (USR-02) to
-    # backup Owner (USR-01). Hidden unless the adapter is constructed with
+    # backup Finance (USR-05). Hidden unless the adapter is constructed with
     # demo_leave_active=True, so the normal demo has nobody on leave.
     "approved_leave": [
+        {"user_id": "USR-01", "backup_approver_id": None, "from_offset_days": -1, "to_offset_days": 2, "active_in_demo_by_default": False},
         {
             "user_id": "USR-02",
-            "backup_approver_id": "USR-01",
+            "backup_approver_id": "USR-05",
             "from_offset_days": -1,
             "to_offset_days": 2,
             "active_in_demo_by_default": False,

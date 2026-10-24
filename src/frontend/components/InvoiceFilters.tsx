@@ -1,3 +1,4 @@
+import { demoMode } from '../api';
 import { useState } from 'react';
 import { CalendarDays, Search } from 'lucide-react';
 import { type Filters, statuses, validateDateRange } from '../model';
@@ -46,7 +47,17 @@ export default function InvoiceFilters({
           onChange={(e) => setFilters({ ...filters, status: e.target.value })}
         >
           <option>All statuses</option>
-          {statuses.map((s) => (
+          {(demoMode
+            ? statuses
+            : [
+                'Ready for follow-up',
+                'Not eligible',
+                'open',
+                'partially_paid',
+                'paid',
+                'void',
+              ]
+          ).map((s) => (
             <option key={s}>{s}</option>
           ))}
         </select>

@@ -10,7 +10,7 @@ test('desktop filters, invoice validation and simulated approval reconcile', asy
   ).toBeVisible();
   await expect(page.locator('.summary-card').first()).toContainText('MYR 45,000.00');
   await expect(page.locator('tbody tr')).toHaveCount(7);
-  await page.screenshot({ path: 'artifacts/desktop.png', fullPage: true });
+  await page.screenshot({ path: 'test-results/desktop.png', fullPage: true });
   await page.getByRole('button', { name: 'Collapse sidebar', exact: true }).click();
   await expect(page.locator('.sidebar')).toHaveCSS('width', '80px');
   await page.getByRole('button', { name: 'Expand sidebar', exact: true }).click();
@@ -89,7 +89,7 @@ test('mobile navigation, responsive containment and accessible dialogs', async (
   expect(
     await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
   ).toBe(true);
-  await page.screenshot({ path: 'artifacts/mobile.png', fullPage: true });
+  await page.screenshot({ path: 'test-results/mobile.png', fullPage: true });
   await page.getByRole('button', { name: 'Open navigation' }).click();
   await expect(page.getByRole('dialog', { name: 'Main navigation' })).toBeVisible();
   await page.keyboard.press('Escape');

@@ -24,7 +24,7 @@ export default function SettingsPage({
         <Settings2 size={20} />
       </div>
       <div className="rule-note">
-        Priority = outstanding amount × max(0, days overdue − grace days). Owner and
+        Priority = outstanding amount Ã— max(0, days overdue âˆ’ grace days). Owner and
         Finance may approve submitted reminders. Owner and Finance may create and submit
         drafts.
       </div>
@@ -34,7 +34,7 @@ export default function SettingsPage({
             <strong>{c.name}</strong>
             <small>
               {c.doNotContact
-                ? 'Do not contact · drafts and delivery blocked'
+                ? 'Do not contact Â· drafts and delivery blocked'
                 : 'Reminders allowed'}
             </small>
           </span>
@@ -58,10 +58,7 @@ export default function SettingsPage({
         />
         Simulate an error on the next refresh
       </label>
-      <p className="muted">
-        Rule edits are a local preview and reset on reload. In API mode, invoices and
-        payments persist and overdue calculations use the Malaysia date.
-      </p>
+      <p className="muted">Rule edits are a local demo preview and reset on reload.</p>
     </section>
   );
 }

@@ -10,34 +10,7 @@ from sqlalchemy.orm import Session
 from app.main import app, get_db, COMPANY, adapter
 from app.db.session import engine as source_engine
 
-@pytest.fixture(scope="module")
-def database():
-    name = "followup_test_" + uuid4().hex
-    admin = create_engine(source_engine.url, isolation_level="AUTOCOMMIT")
-    with admin.connect() as c:
-        c.execute(text(f'CREATE DATABASE "{name}"'))
-    engine = create_engine(source_engine.url.set(database=name))
-    config = Config(str(Path(__file__).resolve().parents[1] / "alembic.ini"))
-    config.attributes["engine"] = engine
-    try:
-        command.upgrade(config, "head")
-        yield engine, config
-    finally:
-        engine.dispose()
-        with admin.connect() as c:
-            c.execute(text(f'DROP DATABASE "{name}" WITH (FORCE)'))
-        admin.dispose()
-
-@pytest.fixture
-def client(database):
-    engine, _ = database
-    def db():
-        with Session(engine) as session:
-            yield session
-    app.dependency_overrides[get_db] = db
-    with TestClient(app) as client:
-        yield client
-    app.dependency_overrides.clear()
+from conftest import database_context
 
 def payload():
     return dict(invoice_no="TEST-" + uuid4().hex[:8], client_id=str(adapter.list_clients(COMPANY)[0].id), issue_date="2026-10-01", due_date="2026-10-23", total_amount="100.10", initial_payment="10.00")
@@ -82,27 +55,24 @@ def test_health_and_missing(client):
     assert "strict-transport-security" not in health.headers
     assert client.post(f"/api/invoices/{uuid4()}/payments", headers={"X-Role": "Finance"}, json={"amount": "1", "received_date": "2026-10-23"}).status_code == 404
 
-def test_existing_baseline(database):
-    engine, config = database
-    with engine.begin() as c:
-        before = c.scalar(text("SELECT count(*) FROM invoice"))
-        c.execute(text("DELETE FROM alembic_version"))
-    command.upgrade(config, "head")
-    with engine.connect() as c:
-        assert c.scalar(text("SELECT count(*) FROM invoice")) == before
+def test_existing_baseline():
+    with database_context("0001", reference=False) as (engine, config):
+        with engine.begin() as c:
+            c.execute(text("INSERT INTO invoice (id, company_id, client_id, invoice_no, issue_date, due_date, total_amount, source) VALUES (:id, :company, :client, 'KEEP-ME', '2026-10-01', '2026-10-23', 100, 'manual')"), dict(id=uuid4(), company=COMPANY, client=uuid4()))
+            c.execute(text("DELETE FROM alembic_version"))
+        command.upgrade(config, "head")
+        with engine.connect() as c:
+            assert c.scalar(text("SELECT invoice_no FROM invoice")) == "KEEP-ME"
+            assert c.scalar(text("SELECT version_num FROM alembic_version")) == "0005"
 
-def test_schema_drift(database):
-    engine, config = database
-    with engine.begin() as c:
-        c.execute(text("DELETE FROM alembic_version"))
-        c.execute(text("ALTER TABLE invoice ADD COLUMN unexpected text"))
-    try:
+
+def test_schema_drift():
+    with database_context("0001", reference=False) as (engine, config):
+        with engine.begin() as c:
+            c.execute(text("DELETE FROM alembic_version"))
+            c.execute(text("ALTER TABLE invoice ADD COLUMN unexpected text"))
         with pytest.raises(RuntimeError, match="differs from baseline"):
             command.upgrade(config, "head")
-    finally:
-        with engine.begin() as c:
-            c.execute(text("ALTER TABLE invoice DROP COLUMN unexpected"))
-        command.upgrade(config, "head")
 
 
 def test_concurrent_payment_rechecks_locked_balance(client):
@@ -137,13 +107,41 @@ def test_browser_persistence(database):
     import uvicorn
     from app.main import app, get_db
     engine, _ = database
+    from datetime import datetime, timedelta, timezone
+    from app.services.scoring import malaysia_date
+    from app.db.models import Invoice, ReminderDraft, SendLog
+    from app.ids import external_uuid
+    from decimal import Decimal
+    now = datetime.now(timezone.utc)
+    today = malaysia_date(now)
+    with Session(engine) as session:
+        for number, client, total in [("QUEUE-TOP", "CLI-01", "2500"), ("QUEUE-DNC", "CLI-07", "5000"), ("QUEUE-SPACED", "CLI-01", "3000"), ("QUEUE-SAFETY", "CLI-01", "500"), ("WF-STANDARD", "CLI-01", "1000"), ("WF-HIGH", "CLI-01", "30000"), ("WF-LEAVE", "CLI-01", "30000"), ("WF-INVALID", "CLI-01", "1000")]:
+            row = Invoice(id=uuid4(), company_id=COMPANY, client_id=external_uuid(client), invoice_no=number, issue_date=today-timedelta(days=60), due_date=today-timedelta(days=40), total_amount=Decimal(total), source="manual", status="open")
+            session.add(row)
+            session.flush()
+            if number == "QUEUE-SPACED":
+                draft = ReminderDraft(id=uuid4(), company_id=COMPANY, invoice_id=row.id, version=1, channel="Email", language="English", tone="Friendly", written_by="template", verification_result={}, status="sent", body="Synthetic history")
+                session.add(draft)
+                session.flush()
+                session.add(SendLog(id=uuid4(), company_id=COMPANY, draft_id=draft.id, channel="Email", recipient_contact="test@example.test", approved_body=draft.body, sent_at=now-timedelta(days=2), status="simulated"))
+        session.commit()
     def db():
         with Session(engine) as session:
             yield session
     app.dependency_overrides[get_db] = db
     from fastapi.middleware.cors import CORSMiddleware
+    from fastapi import FastAPI
+    from app.orbyte.mock import MockOrbyteAdapter
+    import app.main as main
+    original_adapter = main.adapter
+    harness = FastAPI()
+    @harness.post("/__test/leave")
+    def change_leave(flags: dict):
+        main.adapter = MockOrbyteAdapter(demo_leave_active=flags.get("finance",False),demo_owner_leave_active=flags.get("owner",False),reference_date=today)
+        return {"ok":True}
+    harness.mount("/", app)
     # The test frontend has its own origin; production origins remain environment configured.
-    test_app = CORSMiddleware(app, allow_origins=["http://127.0.0.1:5188"], allow_methods=["GET", "POST"], allow_headers=["X-Role", "Content-Type"])
+    test_app = CORSMiddleware(harness, allow_origins=["http://127.0.0.1:5188"], allow_methods=["GET", "POST"], allow_headers=["X-Role", "X-User-ID", "Content-Type"])
     server = uvicorn.Server(uvicorn.Config(test_app, host="127.0.0.1", port=8001, log_level="warning"))
     thread = threading.Thread(target=server.run, daemon=True)
     thread.start()
@@ -167,7 +165,7 @@ def test_browser_persistence(database):
                 if time.monotonic() > deadline:
                     raise RuntimeError("Test frontend startup timed out")
                 time.sleep(.1)
-        subprocess.run(["node", str(root / "node_modules/@playwright/test/cli.js"), "test", "--config=playwright.api.config.ts"], cwd=root, check=True, timeout=120)
+        subprocess.run(["node", str(root / "node_modules/@playwright/test/cli.js"), "test", "--config=playwright.api.config.ts"], cwd=root, check=True, timeout=180)
     finally:
         if frontend is not None:
             frontend.terminate()
@@ -175,3 +173,4 @@ def test_browser_persistence(database):
         server.should_exit = True
         thread.join(timeout=10)
         app.dependency_overrides.clear()
+        main.adapter = original_adapter
