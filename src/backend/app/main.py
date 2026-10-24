@@ -34,6 +34,7 @@ from .services.invoices import InvoiceInput, PaymentInput
 from .csv_schemas import CsvInput, CsvPreview, CsvImportResult
 from .services.followups import ConfigurationError, lock_rule, refresh_workspace, read_workspace
 from .followup_schemas import SummaryInput, SummaryView
+from .services import ai_service
 from . import scheduler
 
 @asynccontextmanager
@@ -441,3 +442,41 @@ def _summary_view(db: DB, summary_id: UUID) -> SummaryView:
         raise HTTPException(404, "Summary not found")
     return SummaryView(id=row.id, week_start=row.week_start, week_end=row.week_end, metrics=row.metrics,
                        narrative=row.narrative, written_by=row.written_by, generated_at=row.generated_at)
+
+
+@app.post("/api/ai-test")
+def ai_test():
+    """Test the AI/Ollama connection with a simple prompt.
+
+    Returns the AI status and a test response. If AI is unavailable,
+    it will return template mode status.
+    """
+    test_facts = {
+        "invoice_no": "TEST-001",
+        "due_date": "2024-10-01",
+        "outstanding_amount": "1000.00",
+        "currency": "RM",
+        "customer_name": "Test Customer",
+        "company_name": "Test Company",
+        "channel": "WhatsApp",
+        "language": "English",
+        "tone": "Friendly"
+    }
+
+    try:
+        body, metadata = ai_service.draft_reminder(test_facts, {})
+        return {
+            "success": True,
+            "ai_available": ai_service.AI_AVAILABLE,
+            "model": ai_service.DEFAULT_MODEL if ai_service.AI_AVAILABLE else None,
+            "mode": metadata.get("source"),
+            "response": body[:200] + "..." if len(body) > 200 else body,
+            "metadata": metadata
+        }
+    except Exception as error:
+        return {
+            "success": False,
+            "ai_available": ai_service.AI_AVAILABLE,
+            "error": str(error),
+            "error_type": type(error).__name__
+        }

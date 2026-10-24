@@ -18,6 +18,7 @@ dependencies = [
     "sqlalchemy>=2.1.6",
     "uvicorn[standard]>=0.54.0",
     "apscheduler>=3.11.3",
+    "openai>=1.0.0",
 ]
 
 [build-system]

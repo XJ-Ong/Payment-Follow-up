@@ -6,9 +6,67 @@ A plugin concept for Orbyte's Work module that helps SMEs decide who to chase fo
 
 ---
 
-## Architecture
+## Quick Start
 
-**Current messaging scope:** Telegram sends real messages; WhatsApp and email remain simulated. The standalone transport is implemented, but integration with approvals, database delivery records and the frontend is pending. See the [messaging setup and team integration contract](docs/messaging.md) before integrating. The architecture below includes planned services, not only completed features.
+### Prerequisites
+
+- [Docker](https://docs.docker.com/get-docker/) with Docker Compose
+- [Python 3.12+](https://www.python.org/downloads/)
+- [uv](https://docs.astral.sh/uv/) for Python dependency management
+- [Node.js 18+](https://nodejs.org/) for the frontend
+
+
+### 1. Database Setup
+
+```bash
+# Copy environment config
+cp .env.example .env
+
+# Start PostgreSQL
+docker compose up -d db
+
+# Navigate to backend
+cd src/backend
+
+# Install dependencies
+uv sync
+
+# Run migrations and seed data
+uv run python -m app.db.init_db
+uv run python -m app.db.seed
+```
+
+### 2. Start Backend
+
+```bash
+# From src/backend
+uv run uvicorn app.main:app --reload --port 8000
+```
+
+Backend runs at: http://localhost:8000
+
+### 3. Start Frontend
+
+```bash
+# From project root
+npm install
+npm run dev
+```
+
+Frontend runs at: http://localhost:5173
+
+### 4. Test AI Integration (Optional)
+
+```bash
+# Test Ollama/AI connection
+curl -X POST http://localhost:8000/api/ai-test
+```
+
+See [OLLAMA_INTEGRATION.md](OLLAMA_INTEGRATION.md) for AI setup details.
+
+---
+
+## Architecture
 
 ```
 +---------------------------------------------------------------+
@@ -71,287 +129,198 @@ The frontend source is in [`src/frontend`](src/frontend), while the backend pack
 
 ---
 
-## Database setup (local)
+## Configuration
 
-**Prerequisites:** [Docker](https://docs.docker.com/get-docker/) (with Compose), [Python 3.12+](https://www.python.org/downloads/), and [uv](https://docs.astral.sh/uv/).
-
-On Windows, install `uv` and a supported Python version from PowerShell:
-
-```powershell
-winget install --id=astral-sh.uv -e
-winget install --id=Python.Python.3.12 -e
-```
-
-Restart PowerShell after installation, then verify:
-
-```powershell
-uv --version
-python --version
-```
-
-If `python --version` still reports an older version, use uv's managed Python directly:
-
-```powershell
-uv python install 3.12
-```
-
-From the repo root:
+Key environment variables in `.env`:
 
 ```bash
-# 1. Create your local config (first time only)
-cp .env.example .env
+# Database
+DATABASE_URL=postgresql+psycopg2://followup:followup_dev_password@localhost:5432/followup
 
-# 2. Start PostgreSQL + Adminer
-docker compose up -d
+# AI (optional)
+AI_MODE=template  # or 'ai' to enable
+OPENAI_API_KEY=ollama
+OPENAI_BASE_URL=https://your-ollama-endpoint/v1
+AI_MODEL=qwen2.5-coder:1.5b
 
-# 3. Enter the backend project
-cd src/backend
+# Demo mode (enables X-Role header simulation)
+DEMO_MODE=true
 
-# 4. Install Python dependencies (creates .venv from uv.lock)
-uv sync
+# Frontend
+VITE_API_URL=http://localhost:8000
+VITE_DATA_MODE=api
 
-# 5. Check the connection (prints the PostgreSQL version)
+# Scheduler (optional)
+ENABLE_SCHEDULER=false
+DAILY_CHECK_HOUR=9
+```
+
+---
+
+## Development
+
+### Database Commands
+
+```bash
+# From src/backend
+
+# Check connection
 uv run python check_db.py
 
-# 6. Create the 11 tables
-uv run python -m app.db.init_db
-
-# 7. Load the demo data
-uv run python -m app.db.seed
-```
-
-| Command | What it does | Safe to re-run? |
-|---|---|---|
-| `check_db.py` | connects to the container and prints the server version | yes |
-| `app.db.init_db` | applies Alembic migrations; verifies an existing schema before baseline adoption | yes |
-| `app.db.seed` | inserts the demo world (1 rule set, 10 client profiles, 20 invoices, 5 payments, 3 reminder histories); refuses to run twice | yes — prints `Already seeded` |
-| `app.db.seed --reset` | **drops all tables**, recreates and reseeds | **destructive** — wipes anything you entered |
-
-**Notes**
-
-* Steps 3–7 must run from `src/backend/` — the `app` package lives there (from the repo root you get `No module named app`).
-* Demo dates are **relative to the day you seed** (an invoice due 40 days ago stays 40 days overdue whenever the demo runs). To refresh them, re-run `app.db.seed --reset`.
-* Use Alembic for schema changes; review generated revisions and commit them with model changes. Do not reset the database to apply a model change.
-* Browse the data in **Adminer** at <http://localhost:8080> — server `db` (the Compose service name, *not* `localhost`), username `followup`, password `followup_dev_password`, database `followup`.
-* Stop the database with `docker compose down`; add `-v` to also delete the data volume (after that, run `init_db` and `seed` again).
-
-## Connected invoice/payment milestone
-
-The frontend now defaults to the FastAPI API. Owner and Finance can create invoices and record payments; Other Staff is restricted. The former draft-only role has been removed. `X-Role` is a demo switch, not production authentication.
-
-From the repository root, configure `.env` using `.env.example`, then start PostgreSQL:
-
-```powershell
-docker compose up -d db
-cd src/backend
-uv sync
+# Run migrations
 uv run alembic upgrade head
+
+# Seed demo data
 uv run python -m app.db.seed
-uv run uvicorn app.main:app --reload --port 8000
+
+# Reset database (destructive!)
+uv run python -m app.db.seed --reset
+
+# Create new migration
+uv run alembic revision --autogenerate -m "description"
 ```
 
-In another terminal, from the repository root:
+**Browse data:** Adminer at http://localhost:8080
+- Server: `db`
+- Username: `followup`
+- Password: `followup_dev_password`
+- Database: `followup`
 
-```powershell
-npm install
-npm run dev
-```
+### Testing
 
-Set `VITE_API_URL=http://localhost:8000` and `VITE_DATA_MODE=api`. Restart Vite after changing environment variables. Backend `CORS_ORIGINS` is a comma-separated list of allowed local frontend origins. For a standalone template preview use `VITE_DATA_MODE=demo`; those template edits are not persisted. API mode saves invoices/payments and uses the current Malaysia date. Owner can edit saved company rules in API mode; Finance and Owner can edit customer follow-up preferences. Scoring, dashboard alerts and queue eligibility are calculated and saved by the backend; saved reminder versions, Finance/Owner approvals and simulated dispatch are now connected; AI and scheduled automation remain future work.
-
-### Production security headers
-
-The Vite development and preview servers emit baseline response headers for the frontend:
-Content-Security-Policy, Strict-Transport-Security, X-Content-Type-Options, X-Frame-Options,
-Referrer-Policy and Permissions-Policy. The API emits the protections that apply to API
-responses. API HSTS is enabled only when `ENABLE_HSTS=true`, because HSTS must not be sent
-over local HTTP.
-
-For production, configure the public HTTPS reverse proxy or hosting platform to preserve these
-headers on every frontend response, redirect HTTP to HTTPS, and set `ENABLE_HSTS=true` for the
-API. Set a production `VITE_API_URL` so the generated CSP `connect-src` allows the real API
-origin. Verify the public URL with the [Mozilla HTTP Observatory](https://observatory.mozilla.org/)
-after deployment; a B grade is 70–79 points, but the exact score can change as Observatory tests
-and modifiers evolve. Do not use the local demo `X-Role` header as production authentication.
-
-### Demo mode and API security
-
-- `DEMO_MODE=true` enables the `X-Role` / `X-User-Id` header simulation used by the demo and the
-  test suite. It is **not** real authentication, and the backend logs a warning while it is on.
-  Fail-to-secure: with the flag unset or false, role-protected endpoints return 403 and only
-  `/api/health` stays open.
-- `CORS_ORIGINS` is validated at startup: explicit `http(s)://host[:port]` entries only; a
-  wildcard or malformed value aborts startup instead of silently allowing any origin.
-- `RATE_LIMIT_PER_MINUTE` (default 1200, `0` disables) limits requests per client IP per minute
-  on `/api/*` (health is exempt); excess requests receive 429 with a `Retry-After` header.
-- `DATABASE_URL` must be a `postgresql://` connection string or the backend refuses to start.
-- AI prompts are built only from sanitized facts (control characters stripped, whitespace
-  collapsed, length capped) to neutralize prompt-injection payloads in names and numbers.
-- Production follow-ups (documented, not built for the MVP): real JWT/session authentication,
-  multi-tenant company scoping, and a secrets manager for AI keys.
-
-### API contract
-
-- `GET /api/health`: database connectivity; 503 when unavailable.
-- `GET /api/invoices`: invoice rows, adapter-backed customers/preferences and Malaysia `as_of_date`.
-- `POST /api/invoices`: `invoice_no`, `client_id` (UUID), `issue_date`, `due_date`, `total_amount`, optional `initial_payment`.
-- `POST /api/invoices/{uuid}/payments`: `amount`, `received_date`, optional `payment_type` (`deposit`, `partial`, `full`) and `reference_number`.
-
-Business routes require `X-Role: Owner` or `Finance`. Unsupported/missing roles and Other Staff return 403; invalid inputs return 422; duplicate invoice numbers return 409. API money fields use decimal strings and dates use `YYYY-MM-DD`. Invoice responses include total, summed payments and calculated outstanding balance. Payment writes lock the invoice, reject overpayment and update financial status in the same transaction, including audit events.
-
-### Migrations and checks
-
-The initial revision uses a frozen schema snapshot. On a fresh database it creates the eleven plugin tables. On an existing database it compares the schema and adopts it only when compatible, preserving records. If it reports differences, review and reconcile them before retrying; do not blindly stamp the database. Baseline downgrade is disabled. Seeds are separate and do not overwrite existing invoices.
-
-```powershell
-# In src/backend
-uv run alembic revision --autogenerate -m "describe schema change"
-# Review the generated migration before applying it
-uv run alembic upgrade head
+```bash
+# Backend tests (from src/backend)
 uv run pytest tests -q
-# At repository root
+
+# Frontend tests (from project root)
 npm test
-npm run build
 npm run test:e2e
-```
 
-Backend integration tests create and remove a uniquely named temporary database on the configured PostgreSQL server; the local development user needs CREATE DATABASE permission. They do not write to the development database. Browser template tests explicitly use demo mode; API browser tests cover the persistent journey separately.
-
-To include the real API browser persistence check (using the installed Edge browser):
-
-```powershell
-# In src/backend; the test manages its temporary database and API server
-$env:RUN_BROWSER_TESTS='1'
+# Include browser API tests
+$env:RUN_BROWSER_TESTS='1'  # PowerShell
 uv run pytest tests -q
 ```
 
-For standalone template browser checks on this Windows setup, set `$env:PLAYWRIGHT_CHANNEL='msedge'` before `npm run test:e2e`, or install the Playwright Chromium browser.
+### API Endpoints
 
+**Health:**
+- `GET /api/health` - Database connectivity check
 
-## Connected invoice/payment milestone
+**Invoices:**
+- `GET /api/invoices` - List invoices
+- `POST /api/invoices` - Create invoice
+- `POST /api/invoices/{id}/payments` - Record payment
 
-The frontend now defaults to the FastAPI API. Owner and Finance can create invoices and record payments; Other Staff is restricted. The former draft-only role has been removed. `X-Role` is a demo switch, not production authentication.
+**Workflow:**
+- `GET /api/workspace` - Dashboard data
+- `POST /api/followups/refresh` - Refresh priority scores
+- `GET /api/queue` - Today's follow-up queue
+- `POST /api/drafts/{id}/approve` - Approve reminder
 
-From the repository root, configure `.env` using `.env.example`, then start PostgreSQL:
+**Settings:**
+- `GET /api/settings/rules` - Company rules
+- `POST /api/settings/rules` - Update rules
+- `GET /api/customers/{id}/profile` - Customer profile
 
-```powershell
-docker compose up -d db
-cd src/backend
-uv sync
-uv run alembic upgrade head
-uv run python -m app.db.seed
-uv run uvicorn app.main:app --reload --port 8000
-```
+**AI:**
+- `POST /api/ai-test` - Test AI connection
 
-In another terminal, from the repository root:
+**Auth:** All business routes require `X-Role: Owner` or `Finance` (demo mode only)
 
-```powershell
-npm install
-npm run dev
-```
+---
 
-Set `VITE_API_URL=http://localhost:8000` and `VITE_DATA_MODE=api`. Restart Vite after changing environment variables. Backend `CORS_ORIGINS` is a comma-separated list of allowed local frontend origins. For a standalone template preview use `VITE_DATA_MODE=demo`; those template edits are not persisted. API mode saves invoices/payments and uses the current Malaysia date. Owner can edit saved company rules in API mode; Finance and Owner can edit customer follow-up preferences. Scoring, dashboard alerts and queue eligibility are calculated and saved by the backend; saved reminder versions, Finance/Owner approvals and simulated dispatch are now connected; AI and scheduled automation remain future work.
+## Security
 
-### API contract
+**Demo Mode:**
+- `DEMO_MODE=true` enables `X-Role` header simulation
+- **NOT** real authentication - logs warning on startup
+- Disable on any public deployment
 
-- `GET /api/health`: database connectivity; 503 when unavailable.
-- `GET /api/invoices`: invoice rows, adapter-backed customers/preferences and Malaysia `as_of_date`.
-- `POST /api/invoices`: `invoice_no`, `client_id` (UUID), `issue_date`, `due_date`, `total_amount`, optional `initial_payment`.
-- `POST /api/invoices/{uuid}/payments`: `amount`, `received_date`, optional `payment_type` (`deposit`, `partial`, `full`) and `reference_number`.
+**Production Requirements:**
+- Real JWT/session authentication
+- Multi-tenant company scoping
+- Secrets manager for AI keys
+- HTTPS with HSTS (`ENABLE_HSTS=true`)
+- Proper CORS configuration
 
-Business routes require `X-Role: Owner` or `Finance`. Unsupported/missing roles and Other Staff return 403; invalid inputs return 422; duplicate invoice numbers return 409. API money fields use decimal strings and dates use `YYYY-MM-DD`. Invoice responses include total, summed payments and calculated outstanding balance. Payment writes lock the invoice, reject overpayment and update financial status in the same transaction, including audit events.
+**Built-in Protections:**
+- Rate limiting (1200 req/min default)
+- CORS validation at startup
+- AI prompt sanitization (injection protection)
+- Number verification on AI outputs
+- Audit logging for all actions
 
-### Migrations and checks
+---
 
-The initial revision uses a frozen schema snapshot. On a fresh database it creates the eleven plugin tables. On an existing database it compares the schema and adopts it only when compatible, preserving records. If it reports differences, review and reconcile them before retrying; do not blindly stamp the database. Baseline downgrade is disabled. Seeds are separate and do not overwrite existing invoices.
+## Optional Features
 
-```powershell
-# In src/backend
-uv run alembic revision --autogenerate -m "describe schema change"
-# Review the generated migration before applying it
-uv run alembic upgrade head
-uv run pytest tests -q
-# At repository root
-npm test
-npm run build
-npm run test:e2e
-```
+### Scheduler
 
-Backend integration tests create and remove a uniquely named temporary database on the configured PostgreSQL server; the local development user needs CREATE DATABASE permission. They do not write to the development database. Browser template tests explicitly use demo mode; API browser tests cover the persistent journey separately.
-
-To include the real API browser persistence check (using the installed Edge browser):
-
-```powershell
-# In src/backend; the test manages its temporary database and API server
-$env:RUN_BROWSER_TESTS='1'
-uv run pytest tests -q
-```
-
-For standalone template browser checks on this Windows setup, set `$env:PLAYWRIGHT_CHANNEL='msedge'` before `npm run test:e2e`, or install the Playwright Chromium browser.
-
-## Scheduler (Optional)
-
-The system can automatically refresh priority scoring daily and generate weekly summaries. This is **optional** — all features work manually through their REST endpoints.
-
-### Enable Scheduler
+Automate daily scoring and weekly summaries:
 
 ```bash
 # In .env
 ENABLE_SCHEDULER=true
-DAILY_CHECK_HOUR=9  # 9 AM Malaysia time
-```
-
-### Jobs
-
-**Daily Scoring Refresh:**
-- Runs at configured hour (default 9 AM MYT)
-- Calls `refresh_workspace()` to recalculate priority scores
-- Logs success/failure to activity log
-- Idempotent (safe to run multiple times)
-
-**Weekly Summary (Optional):**
-```bash
+DAILY_CHECK_HOUR=9
 ENABLE_WEEKLY_SUMMARY=true
-WEEKLY_SUMMARY_DAY=monday  # Day of week
-WEEKLY_SUMMARY_HOUR=9  # Hour in MYT
+WEEKLY_SUMMARY_DAY=monday
+WEEKLY_SUMMARY_HOUR=9
 ```
 
-### Manual Alternative
+Without scheduler, use manual endpoints or "Refresh Now" button.
 
-Without the scheduler:
-- **Refresh queue:** Click "Refresh Now" or `POST /api/followups/refresh`
-- **Generate summary:** `POST /api/summaries/generate`
+---
 
-### Production Notes
+## Project Status
 
-- Scheduler uses APScheduler (BackgroundScheduler)
-- Timezone-aware (Asia/Kuala_Lumpur)
-- Graceful shutdown on app stop
-- Job failures logged, don't crash app
+✅ **Completed:**
+- Frontend layout & navigation
+- Database & migrations
+- Invoice management & payments
+- Priority scoring & daily queue
+- Customer profiles & rules
+- Reminder drafts with approve/skip/snooze
+- Activity log & audit trail
+- Role-based access (Owner, Finance, Other Staff)
+- English/Bahasa Malaysia support
+- CSV import/export
+- Milestone invoice suggestions
+- Backup approver during leave
+- Two-person high-value approval
+- Holiday-aware calculations
+- AI drafting with template fallback
+- Optional scheduled automation
 
-Module Progress
+🟡 **In Progress:**
+- Real messaging (Telegram partial, WhatsApp/Email simulated)
+- Weekly summary refinements
 
-✅ Frontend layout & navigation
-✅ Database & migrations
-✅ Frontend-backend connection
-✅ Invoice listing & creation
-✅ Payment recording
-✅ Outstanding balance calculation
-✅ Simulated roles - Preparer removed
-✅ Dashboard
-✅ Priority scoring & daily queue
-✅ Customer profiles
-✅ Rules & settings
-✅ Reminder drafts
-✅ Approve, skip & snooze
-✅ Activity log
-✅ Simulated outbox
-🟡 Weekly summary
-✅ English/Bahasa Malaysia template reminders
-✅ Fixed-template CSV invoice import; export remains pending
-✅ Milestone invoice suggestions
-✅ Backup Finance approval during leave
-✅ Two-person high-value approval
-✅ Holiday-aware overdue calculation
-✅ AI drafting, explanations & summaries (template fallback functional)
-✅ Scheduled automation (optional, manual refresh available)
+---
+
+## Troubleshooting
+
+**"No module named app"**
+- Run commands from `src/backend`, not project root
+
+**Port already in use**
+- Change `--port 8000` to another port
+- Or stop other services using the port
+
+**Database connection failed**
+- Ensure Docker is running: `docker compose ps`
+- Check DATABASE_URL in `.env`
+
+**AI unavailable**
+- Set `AI_MODE=template` to use templates
+- Or configure Ollama endpoint
+
+**Frontend can't reach API**
+- Check VITE_API_URL matches backend port
+- Verify CORS_ORIGINS includes frontend URL
+- Restart Vite after .env changes
+
+---
+
+## License
+
+[Apache 2.0](LICENSE)
