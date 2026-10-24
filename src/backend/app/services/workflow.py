@@ -9,7 +9,7 @@ from uuid import UUID, uuid4
 from sqlalchemy import func, select
 
 from ..db.models import (ActivityLog, Approval, ClientFollowupProfile, FollowupRule,
-                         Invoice, PaymentRecord, ReminderDraft, SendLog)
+                         Invoice, PaymentRecord, ReminderDraft, SendLog, DeliveryAttempt)
 from .followups import ConfigurationError, lock_rule, refresh_workspace
 from .scoring import malaysia_date
 
@@ -31,8 +31,8 @@ def user_name(adapter, user_id):
         return str(user_id)
 
 
-def audit(db, company, actor, action, invoice_id, draft=None, details=None, now=None):
-    db.add(ActivityLog(id=uuid4(), company_id=company, actor_type="user", actor_id=actor,
+def audit(db, company, actor, action, invoice_id, draft=None, details=None, now=None, actor_type="user"):
+    db.add(ActivityLog(id=uuid4(), company_id=company, actor_type=actor_type, actor_id=actor,
         action=action, entity_type="invoice", entity_id=invoice_id,
         after_state={"invoice_id": str(invoice_id), "draft_id": str(draft.id) if draft else None,
                      "version": draft.version if draft else None, "status": draft.status if draft else None,
@@ -58,7 +58,8 @@ def facts_for(db, company, invoice, adapter):
     if client.company_id != company or profile is None:
         raise ConfigurationError("Missing company customer follow-up profile")
     paid = db.scalar(select(func.coalesce(func.sum(PaymentRecord.amount), 0)).where(PaymentRecord.company_id == company, PaymentRecord.invoice_id == invoice.id))
-    recipient = client.email if profile.preferred_channel == "Email" else client.phone
+    recipient = (profile.telegram_chat_id if profile.preferred_channel == "Telegram" else
+                 client.email if profile.preferred_channel == "Email" else client.phone)
     return dict(invoice_no=invoice.invoice_no, due_date=invoice.due_date.isoformat(), total_amount=f"{invoice.total_amount:.2f}",
         outstanding_amount=f"{max(Decimal('0'), invoice.total_amount-paid):.2f}", currency="MYR", customer_id=str(client.id),
         customer_name=client.name, company_name=adapter.get_company(company).name,
@@ -83,6 +84,8 @@ def template(facts):
 
 def validate_body(body, facts):
     body = body.strip()
+    if facts["channel"] == "Telegram" and len(body.encode('utf-16-le')) // 2 > 4096:
+        raise WorkflowError("Telegram reminders must contain at most 4,096 characters. Edit before approval.", 422)
     if not body or len(body) > 10000:
         raise WorkflowError("Reminder text must contain between 1 and 10,000 characters", 422)
     if any(token not in body for token in (facts["invoice_no"], facts["due_date"], facts["outstanding_amount"], facts["company_name"])):
@@ -125,6 +128,7 @@ def draft_view(db, draft, adapter, actor=None, now=None):
     invoice = db.get(Invoice, draft.invoice_id)
     assignee, waiting = assigned(draft, adapter, today) if not draft.is_legacy else (None, "Historical record; not dispatchable")
     actions = []
+    delivery = db.scalar(select(DeliveryAttempt).where(DeliveryAttempt.company_id == draft.company_id, DeliveryAttempt.draft_id == draft.id))
     if actor is not None and actor.company_id == draft.company_id and actor.role in ("owner", "finance") and draft.is_current and not draft.is_legacy:
         actions = ["versions", "skip", "snooze"]
         if draft.status == "draft":
@@ -135,6 +139,14 @@ def draft_view(db, draft, adapter, actor=None, now=None):
             actions.append("edit-approve")
         if draft.status == "approved":
             actions.append("send")
+    if delivery and draft.status != "sent":
+        if delivery.status in ("sending", "unknown"):
+            actions = []
+            waiting = ("Telegram delivery is in progress. Refresh to check the saved result." if delivery.status == "sending" else
+                       "Telegram delivery outcome is unknown. Do not resend; check Telegram and resolve this delivery before preparing another reminder.")
+        elif delivery.status == "failed":
+            actions = [a for a in actions if a != "send"]
+            waiting = "Telegram rejected the attempt or could not connect. Correct the setup, then edit and save a fresh version for approval before trying again."
     approvals = db.scalars(select(Approval).where(Approval.company_id == draft.company_id, Approval.draft_id == draft.id).order_by(Approval.approval_step)).all()
     return dict(id=str(draft.id), invoice_id=str(draft.invoice_id), invoice_no=invoice.invoice_no, version=draft.version,
         status=draft.status, body=draft.body, channel=draft.channel, language=draft.language, tone=draft.tone,
@@ -143,6 +155,7 @@ def draft_view(db, draft, adapter, actor=None, now=None):
         supersedes_id=str(draft.supersedes_id) if draft.supersedes_id else None, created_at=draft.created_at,
         required_approvals=draft.approval_policy.get("required_approvals", 0), assigned_approver_id=str(assignee) if assignee else None,
         assigned_approver_name=user_name(adapter, assignee) if assignee else None, waiting_reason=waiting,
+        delivery={key: getattr(delivery,key) for key in ("id","status","provider_message_id","error_code","retry_after_seconds","started_at","finished_at")} if delivery else None,
         allowed_actions=actions, approvals=[dict(id=str(a.id), approver_id=str(a.approver_id), approver_name=user_name(adapter,a.approver_id), approval_step=a.approval_step, decision=a.decision, decided_at=a.decided_at, historical=a.is_legacy) for a in approvals])
 
 
@@ -162,6 +175,10 @@ def workflow_views(db, company, adapter, actor=None, now=None):
 
 
 def synchronize(db, company, adapter, rule, rows, calculations, actor_id, now):
+    from .delivery import recover_interrupted
+    recover_interrupted(db,company,now)
+    uncertain = set(db.scalars(select(ReminderDraft.invoice_id).join(DeliveryAttempt, DeliveryAttempt.draft_id == ReminderDraft.id)
+        .where(ReminderDraft.company_id == company, DeliveryAttempt.company_id == company, DeliveryAttempt.status.in_(("sending","unknown")))))
     active = {d.invoice_id: d for d in db.scalars(select(ReminderDraft).where(ReminderDraft.company_id == company, ReminderDraft.is_current))}
     for invoice, _ in rows:
         c = calculations[invoice.id]
@@ -176,6 +193,8 @@ def synchronize(db, company, adapter, rule, rows, calculations, actor_id, now):
                 reasons.append(f"Active reminder journey: {draft.status}")
         if invoice.followup_suppressed_until and malaysia_date(now) < invoice.followup_suppressed_until:
             reasons.append(f"Follow-up suppressed until {invoice.followup_suppressed_until}: {invoice.followup_suppression_reason}")
+        if invoice.id in uncertain:
+            reasons.append("Telegram delivery is in progress or its outcome is unknown; do not resend")
         calculations[invoice.id] = replace(c, eligible=c.eligible and not reasons, exclusion_reasons=tuple(reasons))
     db.flush()
 
@@ -243,7 +262,7 @@ def send_record(db, company, record):
     invoice = db.get(Invoice,draft.invoice_id)
     return dict(id=str(record.id),draft_id=str(draft.id),invoice_id=str(invoice.id),invoice_no=invoice.invoice_no,
         version=draft.version,channel=record.channel,recipient_contact=record.recipient_contact,approved_body=record.approved_body,
-        sent_at=record.sent_at,status=record.status,historical=draft.is_legacy)
+        sent_at=record.sent_at,status=record.status,historical=draft.is_legacy,provider_message_id=record.provider_message_id)
 
 
 def mutate(db,company,adapter,actor,draft_id,action,data,now=None):
@@ -314,6 +333,10 @@ def mutate(db,company,adapter,actor,draft_id,action,data,now=None):
         if not valid:
             audit(db,company,actor.id,"send.blocked",invoice.id,draft,dict(reason="Required version-bound approvals are missing"),now)
             raise WorkflowError("Required approvals are invalid or missing",persist=True)
+        if draft.channel == "Telegram":
+            # Only delivery.dispatch may claim, commit and perform the external request.
+            validate_body(draft.body,draft.facts)
+            return draft
         db.add(SendLog(id=uuid4(),company_id=company,draft_id=draft.id,channel=draft.channel,
             recipient_contact=draft.facts["recipient"],approved_body=draft.body,sent_at=now,status="simulated"))
         draft.status,draft.is_current = "sent",False

@@ -32,13 +32,16 @@ export function nextStep(invoice: Invoice): string {
     invoice.workflow?.latest?.status === 'sent' &&
     !invoice.calculation?.eligible
   )
-    return 'View the saved simulated receipt in Sent';
+    return 'View the saved delivery receipt in Sent';
   if (!draft)
     return invoice.calculation?.eligible
       ? 'Prepare reminder by Finance or Owner'
       : 'Review eligibility and history';
   if (draft.waiting_reason) return draft.waiting_reason;
   if (draft.status === 'draft') return 'Submit for Finance approval by Finance or Owner';
-  if (draft.status === 'approved') return 'Preview and simulate send by Finance or Owner';
+  if (draft.status === 'approved')
+    return draft.channel === 'Telegram'
+      ? 'Preview and send via Telegram by Finance or Owner'
+      : 'Preview and simulate send by Finance or Owner';
   return `Review ${draft.status === 'pending_second_approval' ? 'Owner' : 'Finance'} approval by ${draft.assigned_approver_name ?? 'the assigned approver'}`;
 }

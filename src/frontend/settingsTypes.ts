@@ -1,7 +1,8 @@
 export type ProfileInput = {
   revision: number;
   relationship_tier: 'New' | 'Regular' | 'Key';
-  preferred_channel: 'Email' | 'WhatsApp';
+  preferred_channel: 'Email' | 'WhatsApp' | 'Telegram';
+  telegram_chat_id?: string | null;
   language: 'English' | 'Bahasa Malaysia';
   tone: 'Friendly' | 'Neutral' | 'Firm';
   do_not_contact: boolean;

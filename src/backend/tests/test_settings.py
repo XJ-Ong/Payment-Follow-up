@@ -68,8 +68,8 @@ def test_message_preference_changes_invalidate_only_affected_customer(setup, fie
     unrelated = create(engine,invoice(engine,client='CLI-02'))
     payload = profile_payload(client)
     if payload[field] == value:
-        value = {'language':'Bahasa Malaysia','tone':'Neutral','preferred_channel':'WhatsApp'}[field]
-    result = client.post(PATH,headers=FINANCE_HEADERS,json=payload | {field:value})
+        value = {'language':'Bahasa Malaysia','tone':'Neutral','preferred_channel':'Telegram'}[field]
+    result = client.post(PATH,headers=FINANCE_HEADERS,json=payload | {field:value} | ({'telegram_chat_id':'123456'} if value == 'Telegram' else {}))
     assert result.status_code == 200, result.text
     assert result.json()['invalidated_journeys'] == 1
     with Session(engine) as db:

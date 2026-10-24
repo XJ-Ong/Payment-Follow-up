@@ -11,7 +11,8 @@ class ProfileInput(BaseModel):
     model_config = ConfigDict(extra='forbid')
     revision: int = Field(strict=True, ge=1)
     relationship_tier: Tier
-    preferred_channel: Literal['Email', 'WhatsApp']
+    preferred_channel: Literal['Email', 'WhatsApp', 'Telegram']
+    telegram_chat_id: str | None = Field(default=None, max_length=64, pattern=r'^-?[1-9][0-9]*$')
     language: Literal['English', 'Bahasa Malaysia']
     tone: Literal['Friendly', 'Neutral', 'Firm']
     do_not_contact: bool = Field(strict=True)

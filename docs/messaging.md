@@ -1,6 +1,21 @@
 # Messaging setup and integration contract
 
-The transport lives in `src/backend/app/messaging`. Telegram uses the real Bot API; WhatsApp and Email return simulated results without network calls. This module is independent of the database, frontend and AI. It introduces no public send endpoint and does not change existing models or migrations.
+The transport lives in `src/backend/app/messaging`; approval and durable dispatch integration live in `services/workflow.py` and `services/delivery.py`. Telegram sends real **customer invoice reminders only**. Internal alerts and approval requests remain in the app. WhatsApp and Email are enabled for demo use only: approval and simulated delivery are saved without any external message request. Their historical records are preserved.
+
+## Application setup and journey
+
+1. Apply migrations from `src/backend`: `.venv\Scripts\python.exe -m alembic upgrade head`. Revision 0007 adds customer Telegram chat IDs, a durable delivery-attempt table and provider IDs. It preserves existing preferences, drafts, approvals and send history; it does not invent recipient mappings. New seed profiles retain their original Email/WhatsApp demo preferences, and historical seed receipts retain their original channels.
+2. Configure `TELEGRAM_BOT_TOKEN` in the repository-root `.env`, then restart the backend. Never expose the token through `VITE_*` variables. No token or real customer message is required for automated tests.
+3. As Finance or Owner, open **Customer Profiles → Edit preferences → Telegram** and save the customer's numeric **Telegram chat ID**. Ask the customer to start the bot first. Names, email and phone remain Orbyte-owned. The manual test chat ID is never used as a fallback customer destination.
+4. Prepare an eligible reminder, save edits and submit. Finance approval is required; balances strictly above MYR 20,000 also require a distinct Owner. Recipient or preference changes invalidate outstanding versions and require fresh approval.
+5. Inspect **Approved preview – real Telegram delivery**, then explicitly choose **Send via Telegram**. WhatsApp and Email use **Simulate send**. The exact approved text and recipient are sent; Telegram length is checked before review.
+6. Open **Follow-ups → Sent → View saved receipt** to see Telegram acceptance and the provider message ID after reload. Acceptance does not mean the customer read the message. Failed/unknown attempts remain on the reminder, outside successful Sent receipts.
+
+The existing `POST /api/drafts/{id}/send` endpoint now dispatches Telegram or simulates WhatsApp/Email according to the saved approved channel. Draft responses include `delivery` with status, timestamps, provider message ID, redacted error code and optional retry delay. Outbox responses include `provider_message_id`. Profile GET/POST includes optional `telegram_chat_id`; it is required when choosing Telegram. WhatsApp preferences require the customer's saved phone number and are explicitly labelled demo only.
+
+Before Telegram I/O, the company lock revalidates company, user, version, approvals, facts and eligibility, then commits a unique attempt for that draft. The external request runs after that commit. Duplicate/concurrent send requests return the existing attempt without another request. Completion creates a successful send log and a **System** audit event linked to the initiating user; the original request is a **User** event. Successful Telegram sends participate in per-invoice reminder spacing.
+
+`failed` permits correction followed by a fresh saved version and new approvals. There is no automatic retry. `unknown` and `sending` block further dispatch and new journeys for that invoice, including after a payment or preference change. Refresh converts an interrupted claim older than two minutes to `unknown`. Such outcomes require operator investigation/reconciliation; this milestone does not provide a manual resolution UI. A database transaction cannot guarantee exactly-once delivery across Telegram; the app prevents automatic duplicate attempts and retains ambiguous claims instead of resending.
 
 ## Set up and test Telegram
 
@@ -70,16 +85,16 @@ Error codes include `not_configured`, `connection_failed`, `telegram_400`, `tele
 | Frontend team                  | Load durable drafts and results; connect approvals; show recipient setup, sending/sent/failed/unknown and clearly label simulated channels                                               |
 | AI team                        | Generate wording before approval; transport sends the exact approved wording and never calls AI                                                                                          |
 
-Existing channel constraints accept only Email/WhatsApp, and `SendLog.status` permits only `simulated`. Do not save Telegram results there until a new migration is applied. A separate attempt record can represent pending/sending and uncertain outcomes; agree that design with the backend team. This module does not alter their migration design or implement durable deduplication.
+Revision 0007 expands persisted channel constraints to retain Email/WhatsApp history and support Telegram. `SendLog` accepts `sent` only for Telegram and `simulated` only for Email/WhatsApp. `delivery_attempt` records each claimed Telegram version and its eventual result. Migration downgrade refuses to discard Telegram mappings or delivery history.
 
 The bot token stays on the server. Avoid HTTP debug/access logs containing Telegram URLs: the API embeds the token in the request URL. Store customer mappings and message data with tenant isolation and appropriate retention. No real customer data is needed for testing.
 
-## Workflow acceptance checks (pending integration)
+## Workflow acceptance checks
 
 * Approve a synthetic invoice reminder and send it to its mapped Telegram test chat.
 * Save the provider ID and show the same state after reload.
 * Reject duplicate/concurrent sends and dispatch without all approvals.
 * Exercise blocked-bot rejection, rate limiting and ambiguous timeouts.
-* Confirm Email/WhatsApp remain simulated.
+* Confirm WhatsApp and Email remain simulated, never call a real sender, and preserve their saved approval/receipt history.
 
 Sources: [Telegram sendMessage](https://core.telegram.org/bots/api#sendmessage), [Bot FAQ](https://core.telegram.org/bots/faq).

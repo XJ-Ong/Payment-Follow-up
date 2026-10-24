@@ -63,7 +63,7 @@ def test_existing_baseline():
         command.upgrade(config, "head")
         with engine.connect() as c:
             assert c.scalar(text("SELECT invoice_no FROM invoice")) == "KEEP-ME"
-            assert c.scalar(text("SELECT version_num FROM alembic_version")) == "0006"
+            assert c.scalar(text("SELECT version_num FROM alembic_version")) == "0007"
 
 
 def test_schema_drift():
@@ -100,7 +100,7 @@ def test_tenant_isolation(client, database):
 
 
 @pytest.mark.skipif(not __import__('os').environ.get("RUN_BROWSER_TESTS"), reason="Set RUN_BROWSER_TESTS=1 for browser integration")
-def test_browser_persistence(database):
+def test_browser_persistence(database, monkeypatch):
     import subprocess
     import threading
     import time
@@ -135,6 +135,26 @@ def test_browser_persistence(database):
     import app.main as main
     original_adapter = main.adapter
     harness = FastAPI()
+    # Browser tests never use real credentials or contact Telegram.
+    from app.messaging import DeliveryResult
+    class FakeTelegram:
+        calls = 0
+        status = 'sent'
+        def send(self, message):
+            self.calls += 1
+            return DeliveryResult(channel='Telegram',status=self.status,
+                provider_message_id=str(90000+self.calls) if self.status == 'sent' else None,
+                error_code='transport_uncertain' if self.status == 'unknown' else 'telegram_403' if self.status == 'failed' else None)
+    telegram = FakeTelegram()
+    monkeypatch.setattr(main.delivery.MessagingService,'from_env',lambda:telegram)
+    @harness.get('/__test/telegram')
+    def telegram_calls():
+        return {'calls':telegram.calls}
+    @harness.post('/__test/telegram')
+    def telegram_result(flags: dict):
+        assert flags['status'] in ('sent','failed','unknown')
+        telegram.status = flags['status']
+        return {'ok':True}
     @harness.post("/__test/leave")
     def change_leave(flags: dict):
         main.adapter = MockOrbyteAdapter(demo_leave_active=flags.get("finance",False),demo_owner_leave_active=flags.get("owner",False),reference_date=today)

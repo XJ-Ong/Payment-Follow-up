@@ -218,7 +218,10 @@ export default function AppLayout({
                   Built for thoughtful follow-ups.
                 </span>
                 <span>
-                  Prototype <span>·</span> Synthetic data <span>·</span> Simulated delivery
+                  Prototype <span>·</span> Synthetic data <span>·</span>{' '}
+                  {totals.ready !== undefined
+                    ? 'Telegram live / WhatsApp & Email simulated'
+                    : 'Simulated delivery'}
                 </span>
               </footer>
             </>

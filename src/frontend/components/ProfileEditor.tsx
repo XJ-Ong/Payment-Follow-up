@@ -137,9 +137,41 @@ export default function ProfileEditor({
                 }
               >
                 <option>Email</option>
-                <option>WhatsApp</option>
+                <option>Telegram</option>
+                <option value="WhatsApp">WhatsApp (demo only)</option>
               </select>
             </label>
+            {form.preferred_channel === 'WhatsApp' && (
+              <p role="status">
+                WhatsApp is demo only. Approval and simulated sending are saved, but no
+                real WhatsApp message is delivered.
+              </p>
+            )}
+            {form.preferred_channel === 'Telegram' && (
+              <>
+                <label>
+                  Telegram chat ID
+                  <input
+                    required
+                    inputMode="text"
+                    pattern="-?[1-9][0-9]*"
+                    maxLength={64}
+                    value={form.telegram_chat_id ?? ''}
+                    onChange={(e) =>
+                      setForm({
+                        ...form,
+                        telegram_chat_id: e.target.value.trim() || null,
+                      })
+                    }
+                  />
+                </label>
+                <p>
+                  The customer must start a conversation with your bot first. Enter their
+                  verified numeric chat ID, not a phone number or username. Telegram sends
+                  real messages after approval.
+                </p>
+              </>
+            )}
             <label>
               Language
               <select

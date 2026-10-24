@@ -17,7 +17,18 @@ class ApprovalView(BaseModel):
     decided_at: datetime
     historical: bool
 
+class DeliveryView(BaseModel):
+    id: UUID
+    status: str
+    provider_message_id: str | None
+    error_code: str | None
+    retry_after_seconds: int | None
+    started_at: datetime
+    finished_at: datetime | None
+
+
 class DraftView(BaseModel):
+    delivery: DeliveryView | None = None
     id: UUID
     invoice_id: UUID
     invoice_no: str
@@ -48,6 +59,7 @@ class WorkflowView(BaseModel):
     suppression_reason: str | None
 
 class OutboxView(BaseModel):
+    provider_message_id: str | None = None
     id: UUID
     draft_id: UUID
     invoice_id: UUID

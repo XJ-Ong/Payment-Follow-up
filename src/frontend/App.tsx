@@ -220,10 +220,19 @@ export default function App() {
     if (!current) return;
     const identity = identityGeneration.current;
     try {
-      await changeDraft(current, action, payload, role, userId);
+      const result = await changeDraft(current, action, payload, role, userId);
       if (identity !== identityGeneration.current) return;
       await refresh();
-      toast.success('Reminder workflow saved.');
+      if (action === 'send' && result.delivery?.status === 'failed')
+        toast.error('Telegram delivery failed. Review the saved result.');
+      else if (action === 'send' && result.delivery?.status === 'unknown')
+        toast.warning('Telegram outcome is unknown. Do not resend.');
+      else
+        toast.success(
+          action === 'send' && result.delivery?.status === 'sent'
+            ? 'Telegram accepted the reminder.'
+            : 'Reminder workflow saved.',
+        );
     } catch (err) {
       if (identity === identityGeneration.current) await refresh();
       throw err;

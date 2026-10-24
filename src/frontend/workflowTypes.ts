@@ -14,6 +14,15 @@ export type Approval = {
   historical: boolean;
 };
 export type Draft = {
+  delivery?: {
+    id: string;
+    status: 'sending' | 'sent' | 'failed' | 'unknown';
+    provider_message_id: string | null;
+    error_code: string | null;
+    retry_after_seconds: number | null;
+    started_at: string;
+    finished_at: string | null;
+  } | null;
   id: string;
   invoice_id: string;
   invoice_no: string;
@@ -44,6 +53,7 @@ export type Workflow = {
   suppression_reason: string | null;
 };
 export type OutboxRecord = {
+  provider_message_id?: string | null;
   id: string;
   draft_id: string;
   invoice_id: string;
@@ -84,7 +94,7 @@ export function reminderStatus(status: string) {
     pending_approval: 'Awaiting Finance approval',
     pending_second_approval: 'Awaiting Owner approval',
     approved: 'Approved',
-    sent: 'Simulated sent',
+    sent: 'Sent',
     skipped: 'Skipped',
     snoozed: 'Snoozed',
     superseded: 'Superseded',
@@ -94,6 +104,10 @@ export function reminderStatus(status: string) {
 }
 export function activityLabel(action: string) {
   const labels: Record<string, string> = {
+    'telegram.requested': 'Telegram send requested',
+    'telegram.sent': 'Telegram reminder accepted',
+    'telegram.failed': 'Telegram delivery failed',
+    'telegram.unknown': 'Telegram delivery outcome unknown',
     'rules.updated': 'Company rules updated',
     'customer.profile_updated': 'Customer preferences updated',
     'invoices.csv_imported': 'CSV invoices imported',

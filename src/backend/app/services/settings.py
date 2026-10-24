@@ -40,7 +40,8 @@ def save_settings(db, company, adapter, actor, data, client_id=None):
     if target.revision != data.revision:
         raise HTTPException(409, 'Saved values changed. Reload saved values before saving again.')
     if client_id is not None:
-        contact = client.email if data.preferred_channel == 'Email' else client.phone
+        contact = (data.telegram_chat_id if data.preferred_channel == 'Telegram' else
+                   client.phone if data.preferred_channel == 'WhatsApp' else client.email)
         if not contact or not contact.strip():
             raise HTTPException(422, f'Customer has no contact detail for {data.preferred_channel}')
     active = set(db.scalars(select(ReminderDraft.id).where(ReminderDraft.company_id == company, ReminderDraft.is_current)))

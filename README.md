@@ -6,9 +6,19 @@ A plugin concept for Orbyte's Work module that helps SMEs decide who to chase fo
 
 ---
 
+## Customer reminder delivery
+
+Configure **Customer Profiles → Edit preferences → Telegram** and the customer's numeric **Telegram chat ID**. The customer must start the bot first. WhatsApp is available for demo use; its sends are simulated, like Email. Existing records remain readable. Customer recipients never fall back to `TELEGRAM_TEST_CHAT_ID`.
+
+After required approvals, the reminder panel shows **Approved preview – real Telegram delivery** and **Send via Telegram**. Saved receipts in **Follow-ups → Sent** include the provider message ID. Acceptance is not a read receipt. Delivery completion is audited as **System**, linked to the initiating user. Internal alerts and approval requests stay in the app.
+
+Apply migration 0007 and configure backend-only `TELEGRAM_BOT_TOKEN` before use. Existing preferences and history are preserved; configure Telegram explicitly for each customer. Duplicate requests do not resend. Unknown/interrupted outcomes block further attempts pending operator investigation; automatic retries and a manual reconciliation UI are outside this milestone. See [setup and delivery behaviour](docs/messaging.md).
+
+Verified: 174 backend tests, 17 API browser journeys, 7 standalone demo browser tests, 9 frontend tests and the production build. Telegram tests use fake transports and send no live messages. Fresh/existing migration and schema checks passed; the development migration preserved all 40 invoices, 15 payments and existing reminder/audit history.
+
 ## Architecture
 
-**Current messaging scope:** Telegram sends real messages; WhatsApp and email remain simulated. The standalone transport is implemented, but integration with approvals, database delivery records and the frontend is pending. See the [messaging setup and team integration contract](docs/messaging.md) before integrating. The architecture below includes planned services, not only completed features.
+**Current messaging scope:** Customer invoice reminders can be sent through Telegram after their required approvals. WhatsApp and Email stay simulated for demo use, while their saved approval and receipt history remains available. Internal notifications remain in the app. See [Telegram setup and delivery behaviour](docs/messaging.md). The architecture below includes planned services, not only completed features.
 
 ```
 +---------------------------------------------------------------+

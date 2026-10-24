@@ -62,7 +62,8 @@ export default function ReviewDrawer({
         {databaseMode && (
           <section className="detail-section">
             <p>
-              Invoices, payments and reminder decisions are saved. Delivery is simulated.
+              Invoices, payments and reminder decisions are saved. Telegram sends real
+              messages; WhatsApp and Email remain simulated.
             </p>
             <p>Financial status: {i.financialStatus}</p>
             {outstanding(i) > 0 && i.financialStatus !== 'void' && (
@@ -181,7 +182,7 @@ export default function ReviewDrawer({
                 {i.calculation.holidays_excluded.join(', ') || 'None'}. Weekends count.
               </p>
               {i.calculation.last_sent_date && (
-                <p>Last simulated send: {i.calculation.last_sent_date}</p>
+                <p>Last reminder send: {i.calculation.last_sent_date}</p>
               )}
             </div>
           )}
@@ -224,7 +225,7 @@ export default function ReviewDrawer({
                   : 'No outstanding balance'}
               </strong>
               <p>
-                Drafts and simulated delivery are blocked. The balance remains visible for
+                Drafts and delivery are blocked. The balance remains visible for
                 reporting.
               </p>
             </div>
@@ -344,7 +345,11 @@ export default function ReviewDrawer({
             )}
           </div>
         )}
-        <small>Demo policy only. No real messages or payments are processed.</small>
+        <small>
+          {databaseMode
+            ? 'Demo identities. Telegram sends real messages only after approval and an explicit send action.'
+            : 'Demo policy only. No real messages or payments are processed.'}
+        </small>
       </div>
     </Modal>
   );

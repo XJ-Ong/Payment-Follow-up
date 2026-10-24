@@ -247,6 +247,7 @@ export function profileInput(p: Profile): ProfileInput {
     revision: p.revision,
     relationship_tier: p.relationship_tier,
     preferred_channel: p.preferred_channel,
+    telegram_chat_id: p.telegram_chat_id ?? null,
     language: p.language,
     tone: p.tone,
     do_not_contact: p.do_not_contact,

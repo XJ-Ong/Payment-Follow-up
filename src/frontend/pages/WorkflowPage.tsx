@@ -1,4 +1,5 @@
 import { useRef } from 'react';
+import { Check, Send } from 'lucide-react';
 import { getInvoiceCustomer, money, outstanding, type Invoice } from '../model';
 import { reminderStatus, type OutboxRecord } from '../workflowTypes';
 import { invoiceStage, nextStep, stages, type FollowupStage } from '../followupStages';
@@ -39,9 +40,9 @@ export default function WorkflowPage({
       <div className="section-title">
         <div>
           <h2>Follow-ups</h2>
-          <p>Prepare / Finance approval / Owner if required / Simulate send</p>
+          <p>Prepare / Finance approval / Owner if required / Send</p>
         </div>
-        <span className="prototype-pill">Simulated delivery</span>
+        <span className="prototype-pill">Telegram live / WhatsApp & Email simulated</span>
       </div>
       <div
         className="followup-tabs"
@@ -99,11 +100,13 @@ export default function WorkflowPage({
           </div>
         ) : stage === 'Sent' ? (
           <>
-            <p>Saved simulated dispatches. No real messages were sent.</p>
+            <p>
+              Saved delivery receipts. Telegram is real delivery; Email and WhatsApp
+              receipts are simulated.
+            </p>
             {!outbox.length && (
               <div className="followup-empty">
-                No sent reminders yet. Start in Ready, then complete approval and simulate
-                sending.
+                No sent reminders yet. Start in Ready, then complete approval and send.
               </div>
             )}
             {outbox.map((row) => {
@@ -116,17 +119,74 @@ export default function WorkflowPage({
                     {invoice && <p>Current outstanding: {money(outstanding(invoice))}</p>}
                     <small>
                       Version {row.version}
-                      {row.historical ? ' - Historical' : ''} - Simulated sent
+                      {row.historical ? ' - Historical' : ''} -{' '}
+                      {row.status === 'sent' ? 'Telegram accepted' : 'Simulated sent'}
                     </small>
                     <details>
                       <summary>View saved receipt</summary>
-                      <p>
-                        {row.channel} to {row.recipient_contact} -{' '}
-                        {new Date(row.sent_at).toLocaleString('en-GB', {
-                          timeZone: 'Asia/Kuala_Lumpur',
-                        })}
-                      </p>
-                      <pre>{row.approved_body}</pre>
+                      <section
+                        className="receipt-chat"
+                        aria-label={`Saved message to ${row.recipient_contact}`}
+                      >
+                        <div className="receipt-chat-header">
+                          <span className="receipt-chat-avatar" aria-hidden="true">
+                            {invoice ? (
+                              getInvoiceCustomer(invoice).initials
+                            ) : (
+                              <Send size={20} />
+                            )}
+                          </span>
+                          <div>
+                            <strong>
+                              {invoice
+                                ? getInvoiceCustomer(invoice).name
+                                : row.recipient_contact}
+                            </strong>
+                            <span>
+                              {row.channel} / {row.recipient_contact}
+                            </span>
+                          </div>
+                          <span className="receipt-chat-status">
+                            {row.status === 'sent'
+                              ? 'Telegram accepted'
+                              : 'Simulated sent'}
+                          </span>
+                        </div>
+                        <div className="receipt-chat-body">
+                          <time className="receipt-chat-date" dateTime={row.sent_at}>
+                            {new Date(row.sent_at).toLocaleDateString('en-GB', {
+                              timeZone: 'Asia/Kuala_Lumpur',
+                              day: 'numeric',
+                              month: 'long',
+                              year: 'numeric',
+                            })}
+                          </time>
+                          <div className="receipt-message">
+                            <p className="receipt-message-text">{row.approved_body}</p>
+                            <div className="receipt-message-meta">
+                              <time dateTime={row.sent_at}>
+                                {new Date(row.sent_at).toLocaleTimeString('en-GB', {
+                                  timeZone: 'Asia/Kuala_Lumpur',
+                                  hour: '2-digit',
+                                  minute: '2-digit',
+                                })}
+                              </time>
+                              <Check size={15} aria-hidden="true" />
+                              <span className="sr-only">
+                                {row.status === 'sent'
+                                  ? 'Telegram accepted'
+                                  : 'Simulated sent'}
+                              </span>
+                            </div>
+                          </div>
+                          <p className="receipt-chat-caption">
+                            Saved receipt / Malaysia time /{' '}
+                            {row.status === 'sent'
+                              ? `Telegram message ID: ${row.provider_message_id ?? 'not recorded'}. Acceptance is not a read receipt.`
+                              : 'No real message was sent'}
+                          </p>
+                        </div>
+                      </section>
                       {invoice && (
                         <button className="button" onClick={() => onReview(invoice.id)}>
                           View reminder history

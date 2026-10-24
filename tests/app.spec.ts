@@ -153,6 +153,7 @@ test('notification list opens invoice details and supports dismissal', async ({
   await page.getByRole('heading', { name: 'Payment Follow-up', exact: true }).click();
   await expect(panel).toHaveCount(0);
   await page.getByLabel('DEMO ROLE').selectOption('Other Staff');
+  await page.getByRole('button', { name: 'Close toast', exact: true }).click();
   await bell.click();
   await expect(panel).toContainText('No items need your attention');
 });

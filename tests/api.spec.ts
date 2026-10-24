@@ -1,6 +1,227 @@
 import { readFile } from 'node:fs/promises';
 import { expect, test } from '@playwright/test';
 
+test('WhatsApp demo preferences and approved simulation persist without external sending', async ({
+  page,
+  request,
+}) => {
+  const api = 'http://127.0.0.1:8001/api';
+  const headers = { 'X-Role': 'Finance' };
+  const initial = await (await request.get(`${api}/invoices`, { headers })).json();
+  const customer = initial.customers[1];
+  const url = `${api}/customers/${customer.id}/profile`;
+  const original = await (await request.get(url, { headers })).json();
+  const calls = await (await request.get('http://127.0.0.1:8001/__test/telegram')).json();
+  await page.goto('/');
+  await page.getByLabel('DEMO ROLE').selectOption('Finance');
+  await page.getByRole('button', { name: 'Customer Profiles', exact: true }).click();
+  await page
+    .locator('.customer-profile')
+    .filter({ hasText: customer.name })
+    .getByRole('button', { name: 'Edit preferences' })
+    .click();
+  await page.getByLabel('Preferred channel').selectOption('WhatsApp');
+  await expect(page.getByRole('dialog')).toContainText('WhatsApp is demo only');
+  await page
+    .getByLabel('Tone', { exact: true })
+    .selectOption(original.tone === 'Firm' ? 'Friendly' : 'Firm');
+  await page.getByRole('button', { name: 'Save and recalculate', exact: true }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  const number = `WHATSAPP-DEMO-${Date.now()}`;
+  const today = new Date(`${initial.as_of_date}T00:00:00Z`);
+  const before = (days: number) =>
+    new Date(today.getTime() - days * 86400000).toISOString().slice(0, 10);
+  expect(
+    (
+      await request.post(`${api}/invoices`, {
+        headers,
+        data: {
+          invoice_no: number,
+          client_id: customer.id,
+          issue_date: before(60),
+          due_date: before(40),
+          total_amount: '1000',
+          initial_payment: '0',
+        },
+      })
+    ).ok(),
+  ).toBeTruthy();
+  await page.reload();
+  await page.getByLabel('DEMO ROLE').selectOption('Finance');
+  await openInvoice(page, number);
+  await page.getByRole('button', { name: 'Create template draft', exact: true }).click();
+  await page
+    .getByRole('button', { name: 'Submit for Finance approval', exact: true })
+    .click();
+  await page
+    .getByRole('button', { name: 'Approve current version', exact: true })
+    .click();
+  await expect(page.getByRole('dialog')).toContainText(
+    'Approved preview - simulated delivery only',
+  );
+  await page.getByRole('button', { name: 'Simulate send', exact: true }).click();
+  await expect(page.getByRole('dialog')).toContainText('Simulated dispatch saved');
+  expect(
+    (await (await request.get('http://127.0.0.1:8001/__test/telegram')).json()).calls,
+  ).toBe(calls.calls);
+  await page.reload();
+  await openInvoice(page, number);
+  await expect(page.getByRole('dialog')).toContainText('Simulated dispatch saved');
+  const receipts = await (await request.get(`${api}/outbox`, { headers })).json();
+  expect(
+    receipts.find((r: { invoice_no: string }) => r.invoice_no === number),
+  ).toMatchObject({ channel: 'WhatsApp', status: 'simulated' });
+  const saved = await (await request.get(url, { headers })).json();
+  const {
+    relationship_tier,
+    preferred_channel,
+    telegram_chat_id,
+    language,
+    tone,
+    do_not_contact,
+  } = original;
+  expect(
+    (
+      await request.post(url, {
+        headers,
+        data: {
+          revision: saved.revision,
+          relationship_tier,
+          preferred_channel,
+          telegram_chat_id,
+          language,
+          tone,
+          do_not_contact,
+        },
+      })
+    ).ok(),
+  ).toBeTruthy();
+});
+
+for (const total of ['1000', '30000']) {
+  test(`Telegram customer setup and ${total === '1000' ? 'standard' : 'high-value'} reminder survive reload`, async ({
+    page,
+    request,
+  }) => {
+    const api = 'http://127.0.0.1:8001/api';
+    const headers = { 'X-Role': 'Finance' };
+    const initial = await (await request.get(`${api}/invoices`, { headers })).json();
+    const customer = initial.customers[0];
+    await page.goto('/');
+    await page.getByLabel('DEMO ROLE').selectOption('Finance');
+    await page.getByRole('button', { name: 'Customer Profiles', exact: true }).click();
+    await page
+      .locator('.customer-profile')
+      .filter({ hasText: customer.name })
+      .getByRole('button', { name: 'Edit preferences' })
+      .click();
+    await expect(
+      page.getByLabel('Preferred channel').locator('option[value="WhatsApp"]'),
+    ).not.toHaveAttribute('disabled', '');
+    await page.getByLabel('Preferred channel').selectOption('Telegram');
+    await page
+      .getByLabel('Telegram chat ID')
+      .fill(total === '1000' ? '123456789' : '987654321');
+    await page.getByRole('button', { name: 'Save and recalculate', exact: true }).click();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    const number = `TELEGRAM-${total}-${Date.now()}`;
+    const today = new Date(`${initial.as_of_date}T00:00:00Z`);
+    const before = (days: number) =>
+      new Date(today.getTime() - days * 86400000).toISOString().slice(0, 10);
+    const created = await request.post(`${api}/invoices`, {
+      headers,
+      data: {
+        invoice_no: number,
+        client_id: customer.id,
+        issue_date: before(60),
+        due_date: before(40),
+        total_amount: total,
+        initial_payment: '0',
+      },
+    });
+    expect(created.ok()).toBeTruthy();
+    await page.reload();
+    await page.getByLabel('DEMO ROLE').selectOption('Finance');
+    await openInvoice(page, number);
+    await page
+      .getByRole('button', { name: 'Create template draft', exact: true })
+      .click();
+    await page
+      .getByRole('button', { name: 'Submit for Finance approval', exact: true })
+      .click();
+    await page
+      .getByRole('button', { name: 'Approve current version', exact: true })
+      .click();
+    if (total === '30000') {
+      await expect(page.getByRole('dialog')).toContainText('Awaiting Owner approval');
+      await closeDrawer(page);
+      await page.getByLabel('DEMO ROLE').selectOption('Owner');
+      await openInvoice(page, number);
+      await page
+        .getByRole('button', { name: 'Approve current version', exact: true })
+        .click();
+    }
+    await expect(page.getByRole('dialog')).toContainText(
+      'Approved preview - real Telegram delivery',
+    );
+    const body = await page.locator('.approved-message pre').innerText();
+    const calls = await (
+      await request.get('http://127.0.0.1:8001/__test/telegram')
+    ).json();
+    const response = page.waitForResponse(
+      (r) => r.url().endsWith('/send') && r.request().method() === 'POST',
+    );
+    await page.getByRole('button', { name: 'Send via Telegram', exact: true }).click();
+    const sent = await (await response).json();
+    await expect(page.getByRole('dialog')).toContainText('Telegram delivery saved');
+    expect(sent.delivery.status).toBe('sent');
+    expect(
+      (
+        await request.post(`${api}/drafts/${sent.id}/send`, {
+          headers: { 'X-Role': total === '30000' ? 'Owner' : 'Finance' },
+          data: { version: sent.version },
+        })
+      ).ok(),
+    ).toBeTruthy();
+    expect(
+      (await (await request.get('http://127.0.0.1:8001/__test/telegram')).json()).calls,
+    ).toBe(calls.calls + 1);
+    await closeDrawer(page);
+    await page.reload();
+    await page
+      .getByRole('navigation')
+      .getByRole('button', { name: 'Follow-ups', exact: true })
+      .click();
+    await page.getByRole('tab', { name: /^Sent/ }).click();
+    const row = page.locator('.followup-row').filter({ hasText: number });
+    await row.getByText('View saved receipt', { exact: true }).click();
+    await expect(row).toContainText('Telegram accepted');
+    await expect(row).toContainText(sent.delivery.provider_message_id);
+    await expect(row.locator('.receipt-message-text')).toHaveText(body);
+    await row.screenshot({ path: `test-results/telegram-${total}.png` });
+    // Restore the profile so older independent browser journeys retain their fixtures.
+    const url = `${api}/customers/${customer.id}/profile`;
+    const saved = await (await request.get(url, { headers })).json();
+    const { revision, relationship_tier, language, tone, do_not_contact } = saved;
+    expect(
+      (
+        await request.post(url, {
+          headers,
+          data: {
+            revision,
+            relationship_tier,
+            preferred_channel: 'Email',
+            telegram_chat_id: null,
+            language,
+            tone,
+            do_not_contact,
+          },
+        })
+      ).ok(),
+    ).toBeTruthy();
+  });
+}
+
 test('Audit Log searches saved events, preserves filters and shows recorded changes', async ({
   page,
   request,

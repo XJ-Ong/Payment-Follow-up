@@ -3414,3 +3414,137 @@ input[type='checkbox'] {
     min-width: 0;
   }
 }
+
+/* Telegram-style saved dispatch receipt. */
+.receipt-chat {
+  max-width: 780px;
+  margin: 16px 0;
+  border: 1px solid #dbe5ee;
+  border-radius: 14px;
+  overflow: hidden;
+  background: #fff;
+}
+.receipt-chat-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 20px;
+  background: #fff;
+  border-bottom: 1px solid #dde6ec;
+}
+.receipt-chat-avatar {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: #4399ca;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+}
+.receipt-chat-header > div {
+  flex: 1;
+  min-width: 0;
+}
+.receipt-chat-header strong {
+  display: block;
+  color: #273956;
+  font-size: 14px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.receipt-chat-header > div > span {
+  display: block;
+  margin-top: 3px;
+  color: #687b94;
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.receipt-chat-status {
+  color: #287397;
+  background: #edf7fc;
+  border-radius: 12px;
+  padding: 4px 8px;
+  font-size: 10px;
+  white-space: nowrap;
+}
+.receipt-chat-body {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 18px;
+  padding: 24px;
+  background-color: #e8eff0;
+  background-image: radial-gradient(#bacdd666 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+.receipt-chat-date {
+  align-self: center;
+  padding: 5px 12px;
+  background: #718b997d;
+  color: white;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 500;
+}
+.receipt-message {
+  position: relative;
+  max-width: 88%;
+  min-width: 100px;
+  padding: 16px 18px 10px;
+  background: #e2ffc7;
+  border-radius: 14px 14px 3px 14px;
+  box-shadow: 0 2px 3px #243f5012;
+}
+.receipt-message::after {
+  content: '';
+  position: absolute;
+  right: -7px;
+  bottom: 0;
+  border-left: 9px solid #e2ffc7;
+  border-top: 10px solid transparent;
+}
+.followup-row .receipt-message-text {
+  margin: 0;
+  color: #24372b;
+  font-size: 13px;
+  line-height: 1.8;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.receipt-message-meta {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 5px;
+  margin-top: 8px;
+  color: #537c44;
+  font-size: 11px;
+}
+.followup-row .receipt-chat-caption {
+  align-self: center;
+  margin: 0;
+  color: #516b77;
+  font-size: 11px;
+  text-align: center;
+  line-height: 1.6;
+}
+@media (max-width: 600px) {
+  .receipt-chat-header {
+    padding: 14px;
+    flex-wrap: wrap;
+  }
+  .receipt-chat-status {
+    margin-left: 54px;
+  }
+  .receipt-chat-body {
+    padding: 18px 14px;
+  }
+  .receipt-message {
+    max-width: 95%;
+    padding: 14px;
+  }
+}

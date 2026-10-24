@@ -85,7 +85,7 @@ export default function WorkflowPanel({
     versions: 'Save draft',
     submit: 'Submit for Finance approval',
     approve: 'Approve current version',
-    send: 'Simulate send',
+    send: draft?.channel === 'Telegram' ? 'Send via Telegram' : 'Simulate send',
   };
   const progress = [
     'Prepare',
@@ -200,7 +200,9 @@ export default function WorkflowPanel({
             <div className="approved-message">
               <strong>
                 {shown.status === 'approved'
-                  ? 'Approved preview - simulated delivery only'
+                  ? shown.channel === 'Telegram'
+                    ? 'Approved preview - real Telegram delivery'
+                    : 'Approved preview - simulated delivery only'
                   : 'Saved reminder message'}
               </strong>
               <pre>{shown.body}</pre>
@@ -241,7 +243,11 @@ export default function WorkflowPanel({
                     disabled={busy || (dirty && !text.trim())}
                     onClick={() => void act(primary as DraftAction)}
                   >
-                    {busy ? 'Saving...' : labels[primary]}
+                    {busy
+                      ? primary === 'send'
+                        ? 'Sending...'
+                        : 'Saving...'
+                      : labels[primary]}
                   </button>
                 )}
                 {allowed.includes('versions') && draft.status !== 'draft' && !editing && (
@@ -371,16 +377,46 @@ export default function WorkflowPanel({
           )}
           {shown.status === 'sent' && (
             <div className="journey-next">
-              <strong>Simulated dispatch saved</strong>
+              <strong>
+                {shown.channel === 'Telegram'
+                  ? 'Telegram delivery saved'
+                  : 'Simulated dispatch saved'}
+              </strong>
               <p>
                 The exact approved body and recipient are recorded in Follow-ups / Sent.
-                No real message was delivered.
+                {shown.channel === 'Telegram'
+                  ? 'Telegram accepted this message. This is not a read receipt.'
+                  : 'No real message was delivered.'}
               </p>
             </div>
           )}
         </>
       )}
       {error && <p role="alert">{error}</p>}
+      {shown?.delivery && (
+        <div className="journey-next" role="status">
+          <strong>Telegram delivery: {shown.delivery.status}</strong>
+          {shown.delivery.provider_message_id && (
+            <p>Telegram message ID: {shown.delivery.provider_message_id}</p>
+          )}
+          {shown.delivery.error_code && <p>Result: {shown.delivery.error_code}</p>}
+          {shown.delivery.retry_after_seconds != null && (
+            <p>
+              Provider waiting period: {shown.delivery.retry_after_seconds} seconds. No
+              automatic retry.
+            </p>
+          )}
+          {shown.delivery.status === 'unknown' && (
+            <p>
+              The message may have been accepted. Do not resend; check Telegram before
+              resolving this delivery.
+            </p>
+          )}
+          {shown.delivery.status === 'sending' && (
+            <p>Delivery is in progress. Refresh the workspace to check the result.</p>
+          )}
+        </div>
+      )}
       <details>
         <summary>Draft version history ({versions.length})</summary>
         {versions.map((v) => (

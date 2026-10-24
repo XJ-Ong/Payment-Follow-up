@@ -1,4 +1,4 @@
-"""SQLAlchemy 2.0 models for the 11 plugin-owned tables.
+"""SQLAlchemy 2.0 models for the plugin-owned tables.
 
 (Company, AppUser, Client, Project, Milestone, ApprovedLeave, PublicHoliday)
 arrive through MockOrbyteAdapter, so references to them are
@@ -80,7 +80,8 @@ class ClientFollowupProfile(Base):
     __table_args__ = (
         CheckConstraint("revision > 0", name="ck_client_followup_profile_revision"),
         CheckConstraint("relationship_tier IN ('New', 'Regular', 'Key')", name="ck_cfp_relationship_tier"),
-        CheckConstraint("preferred_channel IN ('Email', 'WhatsApp')", name="ck_cfp_preferred_channel"),
+        CheckConstraint("preferred_channel IN ('Email', 'WhatsApp', 'Telegram')", name="ck_cfp_preferred_channel"),
+        CheckConstraint("telegram_chat_id IS NULL OR telegram_chat_id ~ '^-?[1-9][0-9]*$'", name="ck_cfp_telegram_chat_id"),
         CheckConstraint("language IN ('English', 'Bahasa Malaysia')", name="ck_cfp_language"),
         CheckConstraint("tone IN ('Friendly', 'Neutral', 'Firm')", name="ck_cfp_tone"),
     )
@@ -89,6 +90,7 @@ class ClientFollowupProfile(Base):
     company_id: Mapped[UUID] = _company_id()
     relationship_tier: Mapped[str] = mapped_column(String(20))
     preferred_channel: Mapped[str] = mapped_column(String(20))
+    telegram_chat_id: Mapped[str | None] = mapped_column(String(64))
     language: Mapped[str] = mapped_column(String(30))
     tone: Mapped[str] = mapped_column(String(20))
     do_not_contact: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
@@ -207,7 +209,7 @@ class ReminderDraft(Base):
     __table_args__ = (
         UniqueConstraint("invoice_id", "version", name="uq_reminder_draft_invoice_version"),
         Index("uq_reminder_current_invoice", "invoice_id", unique=True, postgresql_where=text("is_current")),
-        CheckConstraint("channel IN ('Email', 'WhatsApp')", name="ck_reminder_draft_channel"),
+        CheckConstraint("channel IN ('Email', 'WhatsApp', 'Telegram')", name="ck_reminder_draft_channel"),
         CheckConstraint("language IN ('English', 'Bahasa Malaysia')", name="ck_reminder_draft_language"),
         CheckConstraint("tone IN ('Friendly', 'Neutral', 'Firm')", name="ck_reminder_draft_tone"),
         CheckConstraint("written_by IN ('template', 'ai', 'human')", name="ck_reminder_draft_written_by"),
@@ -274,8 +276,8 @@ class SendLog(Base):
     __tablename__ = "send_log"
     __table_args__ = (
         UniqueConstraint("draft_id", name="uq_send_log_draft_id"),  # a draft is sent at most once
-        CheckConstraint("channel IN ('Email', 'WhatsApp')", name="ck_send_log_channel"),
-        CheckConstraint("status IN ('simulated')", name="ck_send_log_status"),  # V1: always simulated
+        CheckConstraint("channel IN ('Email', 'WhatsApp', 'Telegram')", name="ck_send_log_channel"),
+        CheckConstraint("(channel = 'Telegram' AND status = 'sent') OR (channel IN ('Email', 'WhatsApp') AND status = 'simulated')", name="ck_send_log_status"),
     )
 
     id: Mapped[UUID] = _uuid_pk()
@@ -286,6 +288,30 @@ class SendLog(Base):
     approved_body: Mapped[str] = mapped_column(Text)  # exact text approved and sent
     sent_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
     status: Mapped[str] = mapped_column(String(20), server_default="simulated")
+    provider_message_id: Mapped[str | None] = mapped_column(String(100))
+
+
+class DeliveryAttempt(Base):
+    """Durable dispatch claim. One attempt per approved version; never blindly retry."""
+    __tablename__ = "delivery_attempt"
+    __table_args__ = (
+        UniqueConstraint("draft_id", name="uq_delivery_attempt_draft"),
+        Index("ix_delivery_attempt_company_status", "company_id", "status"),
+        CheckConstraint("status IN ('sending', 'sent', 'failed', 'unknown')", name="ck_delivery_attempt_status"),
+    )
+    id: Mapped[UUID] = _uuid_pk()
+    company_id: Mapped[UUID] = _company_id()
+    draft_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("reminder_draft.id", ondelete="RESTRICT"))
+    initiated_by: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True))
+    recipient_contact: Mapped[str] = mapped_column(String(255))
+    approved_body: Mapped[str] = mapped_column(Text)
+    content_digest: Mapped[str] = mapped_column(String(64))
+    status: Mapped[str] = mapped_column(String(20))
+    provider_message_id: Mapped[str | None] = mapped_column(String(100))
+    error_code: Mapped[str | None] = mapped_column(String(100))
+    retry_after_seconds: Mapped[int | None] = mapped_column(Integer)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 # 10

@@ -19,7 +19,7 @@ from .ids import external_uuid
 from .orbyte.mock import MockOrbyteAdapter
 from .orbyte.schemas import AppUser
 from .workflow_schemas import DraftMutation, DraftView, OutboxView, ActivityView, WorkflowView
-from .services import workflow
+from .services import workflow, delivery
 from .services import audit as audit_ops
 from .audit_schemas import AuditPage, AuditDetail
 from .followup_schemas import WorkspaceView, RuleView, SettingsSaveView
@@ -185,7 +185,8 @@ def reminder_versions(invoice_id: UUID, db: DB, role: Role):
 @app.post("/api/drafts/{draft_id}/{action}", response_model=DraftView)
 def reminder_action(draft_id: UUID, action: Literal["versions","submit","approve","edit-approve","skip","snooze","send"], data: DraftMutation, db: DB, role: Role):
     try:
-        draft = workflow.mutate(db,COMPANY,adapter,role,draft_id,action,data)
+        draft = (delivery.dispatch(db,COMPANY,adapter,role,draft_id,data) if action == "send" else
+                 workflow.mutate(db,COMPANY,adapter,role,draft_id,action,data))
         result = workflow.draft_view(db,draft,adapter,role)
         commit(db)
         return result
@@ -216,7 +217,7 @@ def activity_rows(db, actor, invoice_id=None):
     if invoice_id is not None:
         query = query.where(ActivityLog.entity_type == "invoice",ActivityLog.entity_id == invoice_id)
     return [dict(id=str(a.id),action=a.action,actor_id=str(a.actor_id) if a.actor_id else None,
-        actor_name=workflow.user_name(adapter,a.actor_id),entity_type=a.entity_type,entity_id=str(a.entity_id),
+        actor_name=("System" if a.actor_type == "system" and a.actor_id is None else workflow.user_name(adapter,a.actor_id)),entity_type=a.entity_type,entity_id=str(a.entity_id),
         invoice_id=str(a.entity_id) if a.entity_type == "invoice" else None,created_at=a.created_at,details=a.after_state)
         for a in db.scalars(query.order_by(ActivityLog.created_at.desc(),ActivityLog.id.desc()))]
 
