@@ -285,3 +285,13 @@ def import_invoice_csv(data: CsvInput, db: DB, role: Role):
     except Exception:
         db.rollback()
         raise
+
+@app.get('/api/invoices/export/csv')
+def export_invoices_csv_endpoint(db: DB, role: Role):
+    """Download all non-void invoices as CSV in the import template format."""
+    try:
+        content = csv_import.export_invoices_csv(db,COMPANY,adapter)
+    except SQLAlchemyError:
+        db.rollback()
+        raise HTTPException(500,'Export failed; try again.')
+    return Response(content,media_type='text/csv',headers={'Content-Disposition':f'attachment; filename="invoices-export-{date.today().isoformat()}.csv"'})
