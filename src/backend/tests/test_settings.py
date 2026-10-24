@@ -1,6 +1,6 @@
 """Configuration writes, concurrency, rollback and reminder protection on PostgreSQL."""
 from concurrent.futures import ThreadPoolExecutor
-from datetime import timedelta
+from datetime import datetime, timedelta
 from uuid import uuid4
 import pytest
 from fastapi.testclient import TestClient
@@ -23,6 +23,11 @@ def setup(monkeypatch):
                 yield session
         app.dependency_overrides[get_db] = db
         monkeypatch.setattr('app.main.adapter', ADAPTER)
+        class FixedDateTime(datetime):
+            @classmethod
+            def now(cls, tz=None):
+                return NOW.astimezone(tz) if tz else NOW.replace(tzinfo=None)
+        monkeypatch.setattr('app.services.followups.datetime', FixedDateTime)
         try:
             with TestClient(app) as client:
                 yield client, engine, config

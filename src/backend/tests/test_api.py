@@ -226,3 +226,37 @@ def test_browser_persistence(database, monkeypatch):
         thread.join(timeout=10)
         app.dependency_overrides.clear()
         main.adapter = original_adapter
+
+def test_rate_limit_returns_429(client, monkeypatch):
+    from app import main as main_module
+    with main_module._rate_lock:
+        main_module._rate_windows.clear()
+    monkeypatch.setenv("RATE_LIMIT_PER_MINUTE", "2")
+    try:
+        codes = [client.get("/api/invoices", headers={"X-Role": "Owner"}).status_code for _ in range(3)]
+    finally:
+        monkeypatch.delenv("RATE_LIMIT_PER_MINUTE", raising=False)
+        with main_module._rate_lock:
+            main_module._rate_windows.clear()
+    assert codes == [200, 200, 429]
+
+
+def test_rate_limit_skips_health(client, monkeypatch):
+    monkeypatch.setenv("RATE_LIMIT_PER_MINUTE", "1")
+    try:
+        first = client.get("/api/health")
+        second = client.get("/api/health")
+    finally:
+        monkeypatch.delenv("RATE_LIMIT_PER_MINUTE", raising=False)
+    assert first.status_code == 200 and second.status_code == 200
+
+
+def test_demo_mode_off_returns_403(client, monkeypatch):
+    monkeypatch.setenv("DEMO_MODE", "false")
+    try:
+        response = client.get("/api/invoices", headers={"X-Role": "Owner"})
+    finally:
+        monkeypatch.delenv("DEMO_MODE", raising=False)
+    assert response.status_code == 403
+    assert "Demo mode disabled" in response.json()["detail"]
+    assert client.get("/api/health").status_code == 200

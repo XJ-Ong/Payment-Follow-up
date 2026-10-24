@@ -54,6 +54,7 @@ class InvoiceView(BaseModel):
     status: str
     workflow: WorkflowView | None = None
     calculation: CalculationView
+    explanation: str | None = None
 
 class AlertView(BaseModel):
     id: UUID
@@ -90,3 +91,17 @@ class WorkspaceView(BaseModel):
 class SettingsSaveView(BaseModel):
     workspace: WorkspaceView
     invalidated_journeys: int
+
+class SummaryInput(BaseModel):
+    week_start: date
+    week_end: date
+    language: Literal["English", "Bahasa Malaysia"] = "English"
+
+class SummaryView(BaseModel):
+    id: UUID
+    week_start: date
+    week_end: date
+    metrics: dict
+    narrative: str
+    written_by: str
+    generated_at: datetime

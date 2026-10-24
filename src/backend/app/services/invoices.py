@@ -19,6 +19,9 @@ class InvoiceInput(BaseModel):
     due_date: date
     total_amount: Money
     initial_payment: Decimal = Field(default=Decimal('0'), ge=0, max_digits=12, decimal_places=2)
+    # Milestone-sourced invoice linkage (S12); None for manual/CSV entry.
+    milestone_id: UUID | None = None
+    source: Literal['manual', 'csv', 'milestone'] = 'manual'
 
     @model_validator(mode='after')
     def validate_dates_and_payment(self):
@@ -99,7 +102,21 @@ def create(db, company, adapter, actor, data, source='manual'):
             raise HTTPException(422,'Unknown project') from None
         if project.client_id != client.id:
             raise HTTPException(422,'Project must belong to the selected client')
-    invoice = Invoice(id=uuid4(),company_id=company,client_id=data.client_id,project_id=data.project_id,invoice_no=data.invoice_no,issue_date=data.issue_date,due_date=data.due_date,total_amount=data.total_amount,source=source,status='open')
+    if data.milestone_id is not None:
+        try:
+            milestone = adapter.get_milestone(data.milestone_id)
+        except LookupError:
+            raise HTTPException(422, 'Unknown milestone') from None
+        if milestone.project_id != data.project_id:
+            raise HTTPException(422, 'Milestone must belong to the selected project')
+        if milestone.completed_date is None:
+            raise HTTPException(422, 'Cannot bill incomplete milestone')
+        existing = db.scalar(select(Invoice.id).where(
+            Invoice.company_id == company, Invoice.milestone_id == data.milestone_id,
+            Invoice.status != 'void').limit(1))
+        if existing is not None:
+            raise HTTPException(409, 'Milestone already billed')
+    invoice = Invoice(id=uuid4(),company_id=company,client_id=data.client_id,project_id=data.project_id,milestone_id=data.milestone_id,invoice_no=data.invoice_no,issue_date=data.issue_date,due_date=data.due_date,total_amount=data.total_amount,source=data.source if source == 'manual' else source,status='open')
     db.add(invoice)
     db.flush()
     if data.initial_payment:

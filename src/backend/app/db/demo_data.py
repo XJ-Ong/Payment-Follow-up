@@ -465,7 +465,7 @@ INVOICES = [
         "issue_offset_days": -45,
         "due_offset_days": -15,
         "total_amount": "3000.00",
-        "payments": [{"amount": "3200.00", "type": "full", "offset_days": -16}],
+        "payments": [{"amount": "3000.00", "type": "full", "offset_days": -16}],
         "status_override": None,
         "last_reminded_offset_days": None,
     },

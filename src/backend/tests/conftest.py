@@ -9,6 +9,12 @@ from alembic.config import Config
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, text, insert, inspect
 from sqlalchemy.orm import Session
+import os
+# Set before importing app.main (load_dotenv never overrides existing values):
+# disable the per-IP rate limiter for the suite (covered explicitly in test_api.py)
+# and enable the X-Role simulation (the demo gate has its own dedicated test).
+os.environ["RATE_LIMIT_PER_MINUTE"] = "0"
+os.environ["DEMO_MODE"] = "true"
 from app.main import app, get_db, COMPANY
 from app.db.session import engine as source_engine
 from app.db.models import FollowupRule, ClientFollowupProfile

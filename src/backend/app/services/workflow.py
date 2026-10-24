@@ -10,6 +10,7 @@ from sqlalchemy import func, select
 
 from ..db.models import (ActivityLog, Approval, ClientFollowupProfile, FollowupRule,
                          Invoice, PaymentRecord, ReminderDraft, SendLog, DeliveryAttempt)
+from . import ai_service
 from .followups import ConfigurationError, lock_rule, refresh_workspace
 from .scoring import malaysia_date
 
@@ -155,6 +156,8 @@ def draft_view(db, draft, adapter, actor=None, now=None):
     sender_approval = any(a.context.get("approval_mode") == "send" for a in approvals)
     return dict(id=str(draft.id), invoice_id=str(draft.invoice_id), invoice_no=invoice.invoice_no, version=draft.version,
         status=draft.status, body=draft.body, channel=draft.channel, language=draft.language, tone=draft.tone,
+        written_by=draft.written_by, ai_model=draft.ai_model, prompt_version=draft.prompt_version,
+        verification_result=draft.verification_result,
         recipient=draft.facts.get("recipient", ""), prepared_by=str(draft.prepared_by) if draft.prepared_by else None,
         author_name=user_name(adapter, draft.prepared_by), historical=draft.is_legacy, is_current=draft.is_current,
         supersedes_id=str(draft.supersedes_id) if draft.supersedes_id else None, created_at=draft.created_at,
@@ -237,14 +240,30 @@ def new_version(db,company,invoice,adapter,actor,rule,facts,previous=None,body=N
         previous.is_current, previous.status = False, "superseded"
         db.flush()  # release partial unique index before inserting the new current version
     version = (db.scalar(select(func.max(ReminderDraft.version)).where(ReminderDraft.invoice_id == invoice.id, ReminderDraft.company_id == company)) or 0)+1
-    body = validate_body(body if body is not None else template(facts),facts)
+    if previous is None:
+        # A first draft is drafted by AI (AI-1) or its template fallback; an edit is always human.
+        ai_body, meta = ai_service.draft_reminder(facts, policy_for(rule, facts))
+        written_by = meta["source"]
+        ai_model = meta["model"] if written_by == "ai" else None
+        prompt_version = meta["prompt_version"] if written_by == "ai" else None
+        verification_result = {"facts_checked": True, **meta}
+        body = validate_body(ai_body if body is None else body, facts)
+    else:
+        body = validate_body(body if body is not None else template(facts), facts)
+        written_by, ai_model, prompt_version = "human", None, None
+        verification_result = {"facts_checked": True, "source": "human"}
     draft = ReminderDraft(id=uuid4(),company_id=company,invoice_id=invoice.id,version=version,prepared_by=actor.id,
         facts=facts,approval_policy=policy_for(rule,facts),is_current=True,is_legacy=False,supersedes_id=previous.id if previous else None,
-        body=body,channel=facts["channel"],language=facts["language"],tone=facts["tone"],written_by="human" if previous else "template",
-        verification_result={"facts_checked":True,"source":"template" if previous is None else "human"},status="draft",created_at=now)
+        body=body,channel=facts["channel"],language=facts["language"],tone=facts["tone"],written_by=written_by,
+        ai_model=ai_model,prompt_version=prompt_version,verification_result=verification_result,status="draft",created_at=now)
     db.add(draft)
     db.flush()
-    audit(db,company,actor.id,"draft.version_created",invoice.id,draft,now=now)
+    draft_audit = {"source": written_by}
+    if written_by == "ai":
+        draft_audit.update(ai_model=ai_model, prompt_version=prompt_version)
+    elif written_by == "template" and verification_result.get("fallback_reason"):
+        draft_audit["fallback_reason"] = verification_result["fallback_reason"]
+    audit(db,company,actor.id,"draft.version_created",invoice.id,draft,draft_audit,now)
     return draft
 
 

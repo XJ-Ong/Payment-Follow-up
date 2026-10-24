@@ -4,7 +4,7 @@ from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
-from uuid import uuid4
+from uuid import uuid4, UUID
 import pytest
 from sqlalchemy import select, func
 from sqlalchemy.orm import Session
@@ -180,6 +180,54 @@ def test_missing_profile_reports_configuration_error_per_row(client,database):
     finally:
         with Session(database[0]) as db:
             db.add(ClientFollowupProfile(**values));db.commit()
+
+EXPORT = '/api/invoices/export/csv'
+
+def test_export_matches_import_schema_permissions_and_content(client,database):
+    record = row(client_id=str(external_uuid('CLI-02')),project_id=str(external_uuid('PRJ-02')),deposit_paid='100.10')
+    unpaid_record = row(deposit_paid='0')
+    assert send(client,[record,unpaid_record],IMPORT).status_code == 200
+    with Session(database[0]) as db:
+        invoice = db.scalar(select(Invoice).where(Invoice.invoice_no==record['invoice_no']))
+        db.add(PaymentRecord(id=uuid4(),company_id=COMPANY,invoice_id=invoice.id,amount=Decimal('50.00'),received_date=malaysia_date(datetime.now(timezone.utc)),payment_type='partial',recorded_by=external_uuid('USR-05')))
+        db.commit()
+    for role in (None,'Other Staff','Preparer'):
+        headers = {'X-Role':role} if role else {}
+        assert client.get(EXPORT,headers=headers).status_code == 403
+    for role in ('Owner','Finance'):
+        response = client.get(EXPORT,headers={'X-Role':role})
+        assert response.status_code == 200
+        assert response.headers['content-type'].startswith('text/csv')
+        assert 'attachment' in response.headers['content-disposition']
+        assert 'invoices-export-' in response.headers['content-disposition']
+    response = client.get(EXPORT,headers=H)
+    assert list(csv.reader(io.StringIO(response.text)))[0] == HEADERS
+    exported = {item['invoice_no']:item for item in csv.DictReader(io.StringIO(response.text))}
+    mine = exported[record['invoice_no']]
+    assert mine['client_id'] == record['client_id']
+    assert mine['project_id'] == record['project_id']
+    assert mine['issue_date'] == record['issue_date'] and mine['due_date'] == record['due_date']
+    assert mine['total_amount'] == '1000.10' and mine['deposit_paid'] == '150.10'
+    unpaid = next(item for item in exported.values() if item['invoice_no'] != record['invoice_no'] and not item['deposit_paid'])
+    assert unpaid['deposit_paid'] == ''
+
+def test_export_excludes_void_invoices(client,database):
+    record = row()
+    assert send(client,[record],IMPORT).status_code == 200
+    with Session(database[0]) as db:
+        invoice = db.scalar(select(Invoice).where(Invoice.invoice_no==record['invoice_no']))
+        invoice.status = 'void'
+        db.commit()
+    assert record['invoice_no'] not in client.get(EXPORT,headers=H).text
+
+def test_exported_csv_round_trips_through_preview(client,database):
+    assert send(client,[row(),row(deposit_paid='1000.10')],IMPORT).status_code == 200
+    exported = client.get(EXPORT,headers=H).text
+    parsed = list(csv.DictReader(io.StringIO(exported)))
+    assert all(set(item) == set(HEADERS) for item in parsed)
+    renumbered = [dict(item,invoice_no='RT-'+uuid4().hex[:12]) for item in parsed]
+    preview = send(client,renumbered).json()
+    assert preview['can_import'] and preview['invalid_count'] == 0
 
 def test_team_template_codes_projects_and_deposits(client,database):
     text = (Path(__file__).resolve().parents[3] / 'seed_data/valid_invoices_import.csv').read_text(encoding='utf-8-sig')

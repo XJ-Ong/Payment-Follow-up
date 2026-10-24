@@ -10,6 +10,7 @@ from ..db.models import (ActivityLog, Alert, ClientFollowupProfile, FollowupRule
                          Invoice, PaymentRecord, PrioritySnapshot, ReminderDraft, SendLog)
 from ..followup_schemas import WorkspaceView
 from ..orbyte.protocol import OrbyteAdapter
+from . import ai_service
 from .scoring import calculate, malaysia_date, ranking_key
 
 
@@ -111,7 +112,13 @@ def refresh_workspace(db: Session, company: UUID, adapter: OrbyteAdapter,
         snapshot.eligible = c.eligible
         snapshot.exclusion_reasons = list(c.exclusion_reasons)
         snapshot.calculation = detail
-        invoice_views.append(dict(id=str(invoice.id), invoice_no=invoice.invoice_no,
+        explanation = None
+        if c.outstanding > 0 and c.days_overdue > 0:
+            explanation, _ = ai_service.explain_ranking(
+                dict(outstanding=c.outstanding, days_overdue=c.days_overdue, grace_days=c.grace_days,
+                     effective_days=c.effective_days, score=c.score, trigger_type=c.trigger_type),
+                clients[invoice.client_id].name, profiles[invoice.client_id].language)
+        invoice_views.append(dict(id=str(invoice.id), invoice_no=invoice.invoice_no, explanation=explanation,
             client_id=str(invoice.client_id), issue_date=invoice.issue_date.isoformat(), due_date=invoice.due_date.isoformat(),
             total_amount=f"{invoice.total_amount:.2f}", payments=f"{payments:.2f}", outstanding_amount=f"{c.outstanding:.2f}", status=invoice.status, calculation=detail, workflow=workflows[invoice.id]))
     db.flush()
