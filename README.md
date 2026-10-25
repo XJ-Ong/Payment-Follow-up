@@ -1,95 +1,100 @@
 # Payment Follow-up
 
-A plugin concept for Orbyte's Work module that helps SMEs decide who to chase for late payment, drafts the reminder, and lets a person approve it.
+> A plugin for Orbyte's Work module that helps Malaysian micro and small businesses decide which late-paying customer to chase, drafts the reminder with AI, and lets a person approve it before anything is sent.
 
-> Orbyte's platform services (identity, roles, approvals, audit trail, client and project data) are **simulated** in this repo. Every Orbyte-side field and API is our own assumption.
+> Orbyte's platform services (identity, roles, approvals, audit trail, client and project data) are **simulated** in this repo. Every Orbyte-side field and API is our own assumption. All data is synthetic.
 
----
+***
 
-## Quick Start
+## Team Information
 
-### Prerequisites
+| Field                 | Details                                                    |
+| --------------------- | ---------------------------------------------------------- |
+| **Team Name**         | ProjectKita                                                |
+| **Team Domain**       | Domain 2: Orbyte Smart SME Challenge                       |
+| **SDG Track (1–17)**  | SDG 8, Decent Work and Economic Growth (supporting: SDG 9) |
+| **Team Leader**       | Muhammad Fikri Bin Mohd Nizan                              |
+| **University**        | Asia Pacific University of Technology and Innovation (APU) |
+| **Number of Members** | 5                                                          |
 
-- [Docker](https://docs.docker.com/get-docker/) with Docker Compose
-- [Python 3.12+](https://www.python.org/downloads/)
-- [uv](https://docs.astral.sh/uv/) for Python dependency management
-- [Node.js 18+](https://nodejs.org/) for the frontend
+## Links
 
+| Resource          | Link                                                                                                                                                           |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GitHub Repository | <https://github.com/XJ-Ong/Payment-Follow-up>                                                                                                                  |
+| Live Demo         | <https://payment-follow-up.replit.app>                                                                                                                         |
+| RunPod Endpoint   | `https://api.runpod.ai/v2/`                                                          |
+| Slide Deck        | [Payment Follow-Up.pdf](https://cloudmails-my.sharepoint.com/:b:/g/personal/tp071614_mail_apu_edu_my/IQC3o8zPdu5FRKAc7wHv5-eKAcuVrDnp3A30wPsGFiH2gIw?e=DgJ3Hx) |
+| Demo Video        | <https://youtu.be/1-kgHkHPzQY>                                                                                                                                 |
 
-### 1. Database Setup
+***
 
-```bash
-# Copy environment config
-cp .env.example .env
+## Overview
 
-# Start PostgreSQL
-docker compose up -d db
+### Problem
 
-# Navigate to backend
-cd src/backend
+Malaysian SMEs wait an average of 64 days to be paid, about six days longer than large corporates (Experian Malaysia, *State of Credit 2025*). Many owners track invoices in Excel and chase customers on WhatsApp, with no consistent rule for who to chase first or how firmly. Late cash limits an SME's ability to pay staff, suppliers and rent. We interviewed one owner-run micro rental-car business to understand its invoicing and communication habits. This is one case, not a survey.
 
-# Install dependencies
-uv sync
+### Solution
 
-# Run migrations and seed data
-uv run python -m app.db.init_db
-uv run python -m app.db.seed
+Payment Follow-up shows the owner who owes them money, ranks each overdue invoice with a transparent priority score (amount still owed × days overdue, after grace days by customer type), and tells them each day who to chase and why. AI writes the reminder in the customer's preferred channel, language and tone. **A person always approves before anything goes out, and every action is recorded.** Code decides and calculates; AI only writes and explains.
+
+### Key Features
+
+* **Priority score and daily queue** — ranks overdue invoices and shows the reason for each ranking.
+* **AI-drafted reminders** — English or Bahasa Malaysia, with a check that every number matches the data and a fixed-template fallback if the AI fails.
+* **Human approval** — approve, edit and approve, skip or snooze. Optional second approval for high-value items.
+* **Roles and permissions (simulated)** — Owner and Finance can view and act; Other staff see nothing. Checked in the backend on every call.
+* **Activity log** — append-only record of every alert, draft, edit, approval, send and rule change.
+* **Weekly summary** — numbers calculated by code, narrative written by AI.
+* **Simulated sending** — email and WhatsApp previews only. No real messages or payments.
+
+### Tech Stack
+
+| Layer             | Technology                                                                   |
+| ----------------- | ---------------------------------------------------------------------------- |
+| Frontend          | React, Vite, Tailwind CSS, shadcn/ui, Recharts                               |
+| Backend           | Python, FastAPI, Pydantic, APScheduler                                       |
+| Database          | PostgreSQL, SQLAlchemy 2.0 (`Decimal` / `NUMERIC` for money, currency MYR)   |
+| AI / Compute      | RunPod Serverless, open model `<TODO: model name>` served with vLLM          |
+| Hosting / Dev     | Replit (Reserved VM) for deployment and hosting, with its own PostgreSQL     |
+| Orbyte simulation | Python `Protocol` interface with `MockOrbyteAdapter` reading JSON seed files |
+| Testing           | pytest                                                                       |
+| Source control    | GitHub: `main` (final, deployed), `dev` (integration), personal branches     |
+
+***
+
+## Project Structure
+
+> `<TODO: developers, confirm this matches the repo before submitting.>`
+
+```
+.
+├── docs/                    # Screenshots, diagrams
+├── src/
+│   ├── backend/             # FastAPI app (package: app), seed data, tests
+│   └── frontend/            # React (Vite) single-page app
+├── submission/              # Required submission documents
+│   ├── SDC2026_ProjectKita_Preliminary.pdf
+│   ├── SDC2026_ProjectKita_TechDeclaration.pdf
+│   ├── SDC2026_ProjectKita_Replit_POU.pdf
+│   └── SDC2026_ProjectKita_Runpod_POU.pdf
+├── docker-compose.yml       # Local PostgreSQL + Adminer
+├── .env.example             # Example environment variables
+├── .gitignore
+├── .replit                  # Replit run configuration
+├── LICENSE
+└── README.md
 ```
 
-### 2. Start Backend
-
-```bash
-# From src/backend
-uv run uvicorn app.main:app --reload --port 8000
-```
-
-Backend runs at: http://localhost:8000
-
-### 3. Start Frontend
-
-```bash
-# From project root
-npm install
-npm run dev
-```
-
-Frontend runs at: http://localhost:5173
-
-### 4. Provision a private login
-
-Session login is enabled by default. Before signing in, migrate the database and create
-an account linked to an existing Owner or Finance staff identity:
-
-```bash
-cd src/backend
-uv run alembic upgrade head
-uv run python -m app.manage_accounts list-staff
-uv run python -m app.manage_accounts provision --staff USR-01 --email owner@your-company.com
-```
-
-The command prompts privately for a password. No default login exists. See
-[Authentication and publishing](docs/authentication.md) for local setup, password resets,
-demo compatibility, and Replit publishing commands.
-
-### 5. Test AI Integration (Optional)
-
-```bash
-# Test Ollama/AI connection
-# Owner session cookie, allowed Origin and X-CSRF-Token are required.
-# See docs/authentication.md for authenticated requests.
-```
-
-See [OLLAMA_INTEGRATION.md](OLLAMA_INTEGRATION.md) for AI setup details.
-
----
-## Architecture
+### Architecture
 
 ```
 +---------------------------------------------------------------+
 |  Browser: React (Vite) single-page app                        |
 +------------------------------+--------------------------------+
                                | HTTPS, JSON (/api/...)
-                               | HttpOnly session cookie (authenticated staff)
+                               | X-Role header (simulated login)
 +------------------------------v--------------------------------+
 |  FastAPI application (one deployable service)                 |
 |                                                               |
@@ -111,250 +116,178 @@ See [OLLAMA_INTEGRATION.md](OLLAMA_INTEGRATION.md) for AI setup details.
 +-------------------+            +------------------------------+
 
 +----------------------------------+
-| Runpod Rented Pods               |  called only by ai_service
+| Runpod rented pods endpoint      |  called only by ai_service
 | open model served with vLLM      |  (OpenAI-compatible API)
 +----------------------------------+
 ```
 
+### Security controls
 
----
+* Security headers on the frontend, targeting at least a B grade on Mozilla's HTTP Observatory. `<TODO: add the scan result for the deployed URL once measured.>`
+* PostgreSQL row-level security to keep each company's data separate.
+* Role checks are enforced in the backend, not only hidden in the UI.
+* API keys and the database connection string stay on the backend and are never exposed to the browser.
 
-## Tech stack
+***
 
-| Layer | Choice |
-|---|---|
-| Backend language and framework | Python, FastAPI |
-| Validation | Pydantic |
-| Money | `Decimal` in Python, `NUMERIC` in Postgres, currency MYR |
-| Time | Store UTC, calculate days overdue in `Asia/Kuala_Lumpur` |
-| Database | PostgreSQL |
-| ORM and schema | SQLAlchemy 2.0, Alembic migrations plus a separate seed script |
-| Frontend | React, Vite, Tailwind CSS, shadcn/ui, Recharts |
-| Scheduler | APScheduler inside the FastAPI process, plus a Refresh now button |
-| AI model | served with vLLM on a Runpod |
-| AI client | `openai` Python library pointed at the Runpod URL |
-| Orbyte simulation | Python `Protocol` interface, `MockOrbyteAdapter` reading JSON seed files |
-| Access | Private email/password login, revocable server sessions, existing Owner/Finance identities |
-| Testing | pytest |
-| Local development | Docker Compose for a per-developer Postgres |
-| Hosting | Replit (Reserved VM), with its own Replit PostgreSQL |
-| Source control | GitHub: `main` (final, deployed), `dev` (integration), personal branches |
+## How to Run
 
-The frontend source is in [`src/frontend`](src/frontend), while the backend package is in
-[`src/backend`](src/backend).
+### Option 1: Run on Replit (Recommended)
 
----
+1. Open the \[Replit Project]\(`<TODO: Replit project link>`), or import this repository via **Create Repl → Import from GitHub**.
+2. Open the **Secrets** tab and add the variables listed in `.env.example`, including:
+   * `RUNPOD_API_KEY`
+   * `RUNPOD_ENDPOINT_ID`
+   * `DATABASE_URL=postgresql+psycopg2://followup:followup_dev_password@localhost:5432/followup`
+     `TELEGRAM_BOT_TOKEN`
+3. Click **Run**. Replit uses the `.replit` file to start the app. `<TODO: confirm the start command.>`
 
-## Configuration
+### Option 2: Run Locally
 
-Key environment variables in `.env`:
+**Prerequisites:** [Docker](https://docs.docker.com/get-docker/) (with Compose), [Python 3.12+](https://www.python.org/downloads/), and [uv](https://docs.astral.sh/uv/).
 
-```bash
-# Database
-DATABASE_URL=postgresql+psycopg2://followup:followup_dev_password@localhost:5432/followup
+On Windows, install `uv` and a supported Python version from PowerShell:
 
-# AI (optional)
-AI_MODE=template  # or 'ai' to enable
-OPENAI_API_KEY=ollama
-OPENAI_BASE_URL=https://your-ollama-endpoint/v1
-AI_MODEL=qwen2.5-coder:1.5b
-
-# Private team login
-AUTH_MODE=session
-DEMO_MODE=false
-APP_ENV=development
-APP_ORIGIN=http://localhost:5173
-VITE_AUTH_MODE=session
-
-# Frontend
-VITE_API_URL=http://localhost:8000
-VITE_DATA_MODE=api
-
-# Scheduler (optional)
-ENABLE_SCHEDULER=false
-DAILY_CHECK_HOUR=9
+```PowerShell
+winget install --id=astral-sh.uv -e
+winget install --id=Python.Python.3.12 -e
 ```
 
----
+Restart PowerShell after installation, then verify:
 
-## Development
+```PowerShell
+uv --version
+python --version
+```
 
-### Database Commands
+If `python --version` still reports an older version, use uv's managed Python directly:
 
-```bash
-# From src/backend
+```PowerShell
+uv python install 3.12
+```
 
-# Check connection
+From the repo root:
+
+```Shell
+# 1. Create your local config (first time only)
+cp .env.example .env
+
+# 2. Start PostgreSQL + Adminer
+docker compose up -d
+
+# 3. Enter the backend project
+cd src/backend
+
+# 4. Install Python dependencies (creates .venv from uv.lock)
+uv sync
+
+# 5. Check the connection (prints the PostgreSQL version)
 uv run python check_db.py
 
-# Run migrations
-uv run alembic upgrade head
+# 6. Create the 11 tables
+uv run python -m app.db.init_db
 
-# Seed demo data
+# 7. Load the demo data
 uv run python -m app.db.seed
-
-# Start backend server
-uv run uvicorn app.main:app --reload --port 8000
-
-# Reset database (destructive!)
-uv run python -m app.db.seed --reset
-
-# Create new migration
-uv run alembic revision --autogenerate -m "description"
 ```
 
-### Start frontend 
+| Command               | What it does                                                                                                                 | Safe to re-run?                             |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
+| `check_db.py`         | connects to the container and prints the server version                                                                      | yes                                         |
+| `app.db.init_db`      | creates any missing tables (`create_all`); never drops or alters existing ones                                               | yes                                         |
+| `app.db.seed`         | inserts the demo world (1 rule set, 10 client profiles, 20 invoices, 5 payments, 3 reminder histories); refuses to run twice | yes. Prints `Already seeded`                |
+| `app.db.seed --reset` | **drops all tables**, recreates and reseeds                                                                                  | **destructive**. Wipes anything you entered |
 
-```bash
+**Notes**
 
-# Install/Update package dependencies
-npm install
+* Steps 3–7 must run from `src/backend/`. The `app` package lives there (from the repo root you get `No module named app`).
+* Demo dates are **relative to the day you seed** (an invoice due 40 days ago stays 40 days overdue whenever the demo runs). To refresh them, re-run `app.db.seed --reset`.
+* There is no migration tool in the MVP: after changing a model, re-create from scratch with `app.db.seed --reset`.
+* Browse the data in **Adminer** at <http://localhost:8080>: server `db` (the Compose service name, *not* `localhost`), username `followup`, password `followup_dev_password` (local development only), database `followup`.
+* Stop the database with `docker compose down`; add `-v` to also delete the data volume (after that, run `init_db` and `seed` again).
 
-# Start frontend server
-npm run dev
-```
-**Browse data:** Adminer at http://localhost:8080
-- Server: `db`
-- Username: `followup`
-- Password: `followup_dev_password`
-- Database: `followup`
+### Run Tests
 
-### Testing
-
-```bash
-# Backend tests (from src/backend)
-uv run pytest tests -q
-
-# Frontend tests (from project root)
-npm test
-npx playwright install chromium # First run, or after upgrading Playwright
-npm run test:e2e
-
-# Include browser API tests
-$env:RUN_BROWSER_TESTS='1'  # PowerShell
-uv run pytest tests -q
+```Shell
+cd src/backend
+uv run pytest
 ```
 
-### API Endpoints
+***
 
-**Health:**
-- `GET /api/health` - Database connectivity check
+## How We Use Replit *(Required)*
 
-**Invoices:**
-- `GET /api/invoices` - List invoices
-- `POST /api/invoices` - Create invoice
-- `POST /api/invoices/{id}/payments` - Record payment
+* **Hosting:** the prototype is deployed on a Replit Reserved VM at the Live Demo link above, with its own Replit PostgreSQL.
+* **Why hosting only:** after the Replit workshop we chose to use Replit only for deployment and hosting, because its credit limits could run out in the middle of development. Day-to-day development runs locally with Docker.
+* **Secrets:** API keys are stored in Replit Secrets, never in the code.
 
-**Workflow:**
-- `GET /api/workspace` - Dashboard data
-- `POST /api/followups/refresh` - Refresh priority scores
-- `GET /api/queue` - Today's follow-up queue
-- `POST /api/drafts/{id}/approve` - Approve reminder
+📄 Proof of use: [`submission/SDC2026_ProjectKita_Replit_POU.pdf`](submission/SDC2026_ProjectKita_Replit_POU.pdf)
 
-**Settings:**
-- `GET /api/settings/rules` - Company rules
-- `POST /api/settings/rules` - Update rules
-- `GET /api/customers/{id}/profile` - Customer profile
+## How We Use RunPod *(Required)*
 
-**AI:**
-- `POST /api/ai-test` - Test AI connection
+* **Workload:** text generation (reminder drafts, ranking explanations and the weekly summary narrative) runs on a RunPod GPU Pod serving an open-source model with vLLM.
+* **Why RunPod:** we use an open model on our own endpoint instead of a third-party AI API, and the backend sends it only the fields it needs (no contact numbers or emails).
+* **Integration:** only `ai_service` calls the endpoint, through the OpenAI-compatible API using the `openai` Python library, with `RUNPOD_API_KEY` and `RUNPOD_ENDPOINT_ID`.
+* **Safety around the model:** every number in a draft is checked against the invoice data. If the check or the call fails, a fixed template is used. The rest of the system works with AI switched off.
 
-**Auth:** Business routes require a private team session. POST requests require an allowed Origin and `X-CSRF-Token`. The AI diagnostic is Owner-only. `X-Role` headers work only in explicitly enabled local demo mode.
+Example request (`<TODO: developers, confirm the URL path and model name.>`):
 
----
-
-## Security
-
-**Private team authentication:**
-- Argon2 password hashes and database-backed, revocable eight-hour sessions
-- HttpOnly cookies; Secure cookies and HSTS in production
-- Server-resolved Owner/Finance roles; browser identity headers are ignored
-- Origin and CSRF validation for mutations; persistent sign-in throttling
-- Session expiry, logout, password reset, and account disabling revoke access
-
-**Local demo compatibility:**
-- Requires `AUTH_MODE=demo`, `DEMO_MODE=true`, and `VITE_AUTH_MODE=demo`
-- Production startup rejects demo authentication
-- Company scoping remains the existing single-company workspace
-
-**Built-in Protections:**
-- Rate limiting (1200 req/min default)
-- CORS validation at startup
-- AI prompt sanitization (injection protection)
-- Number verification on AI outputs
-- Audit logging for all actions
-
----
-
-## Optional Features
-
-### Scheduler
-
-Automate daily scoring and weekly summaries:
-
-```bash
-# In .env
-ENABLE_SCHEDULER=true
-DAILY_CHECK_HOUR=9
-ENABLE_WEEKLY_SUMMARY=true
-WEEKLY_SUMMARY_DAY=monday
-WEEKLY_SUMMARY_HOUR=9
+```Shell
+curl -X POST https://api.runpod.ai/v2/$RUNPOD_ENDPOINT_ID/openai/v1/chat/completions \
+  -H "Authorization: Bearer $RUNPOD_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"model": "<TODO: model name>", "messages": [{"role": "user", "content": "Hello"}]}'
 ```
 
-Without scheduler, use manual endpoints or "Refresh Now" button.
+📄 Proof of use: [`submission/SDC2026_ProjectKita_Runpod_POU.pdf`](submission/SDC2026_ProjectKita_Runpod_POU.pdf)
 
----
+***
 
-## Project Status
+## Challenges & Learnings
 
-✅ **Completed:**
-- Frontend layout & navigation
-- Database & migrations
-- Invoice management & payments
-- Priority scoring & daily queue
-- Customer profiles & rules
-- Reminder drafts with approve/skip/snooze
-- Activity log & audit trail
-- Role-based access (Owner, Finance, Other Staff)
-- English/Bahasa Malaysia support
-- CSV import/export
-- Milestone invoice suggestions
-- Backup approver during leave
-- Two-person high-value approval
-- Holiday-aware calculations
-- AI drafting with template fallback
-- Optional scheduled automation
+* **Ranking formula:** our first priority formula (days late ÷ amount owed) ranked big debts below small ones. We replaced it with amount owed × days overdue, and handled customer relationship as grace days.
+* **Too many reviewers:** a separate drafting role added a second review of the same message, against the "less busywork" goal. We removed it, so the AI drafts and one human decides.
+* **AI wording errors:** small models can write weak drafts, especially in Bahasa Malaysia. We insert amounts and dates from data fields, check every number, and fall back to a template.
+* **Credit limits:** to avoid running out of Replit credits mid-development, we develop locally and use Replit for deployment only.
+* **No access to Orbyte's platform:** we simulate it behind an adapter interface, so the real APIs can replace the mock later.
+* **Honest limits:** we interviewed one micro business. All results are measured on synthetic data, not real SME data.
 
-🟡 **In Progress:**
-- Real messaging (Telegram partial, WhatsApp/Email simulated)
-- Weekly summary refinements
+## Future Improvements
 
----
+* [ ] Promise-to-pay and dispute hold
+* [ ] Escalation ladder (friendly → firm → owner call), approved at each step, never legal
+* [ ] Real WhatsApp and email sending
+* [ ] Photo or WhatsApp-text invoice capture
+* [ ] Payment history and cash-in forecast
+* [ ] Partner payment data through Orbyte Connect
+* [ ] Optional draft-only Preparer role
+* [ ] Usage metering for Orbyte's transaction-based pricing
 
-## Troubleshooting
+## Team
 
-**"No module named app"**
-- Run commands from `src/backend`, not project root
+| Name    | Role                    | GitHub              |
+| ------- | ----------------------- | ------------------- |
+| Ong     | Developer               | `XJ-Ong` |
+| Aiman   | Developer               | `soniey` |
+| Rudra   | AI / RunPod integration | `Rudra` |
+| Vikrant | UAT, QA                 | `Vikrant` |
+| Fikri   | Moderator, Pitching     | `FikriNizan` |
 
-**Port already in use**
-- Change `--port 8000` to another port
-- Or stop other services using the port
+***
 
-**Database connection failed**
-- Ensure Docker is running: `docker compose ps`
-- Check DATABASE_URL in `.env`
+## Submission Checklist
 
-**AI unavailable**
-- Set `AI_MODE=template` to use templates
-- Or configure Ollama endpoint
-
-**Frontend can't reach API**
-- Check VITE_API_URL matches backend port
-- Verify CORS_ORIGINS includes frontend URL
-- Restart Vite after .env changes
-
----
+* [x] Team name, domain (Domain 2) and SDG track filled in
+* [x] Slide deck link added
+* [x] Demo video link added
+* [x] Replit used, with proof of use in `submission/`
+* [x] RunPod used, with proof of use in `submission/`
+* [x] Preliminary submission completed (`SDC2026_ProjectKita_Preliminary.pdf`)
+* [x] Technology declaration completed (`SDC2026_ProjectKita_TechDeclaration.pdf`)
+* [x] Submission files renamed with the team name
+* [x] "How to Run" steps verified
+* [x] No API keys or secrets committed to the repository
 
 ## License
 
-[Apache 2.0](LICENSE)
+This project is licensed under the [Apache License 2.0](LICENSE).
